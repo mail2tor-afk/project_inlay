@@ -137,11 +137,12 @@ class TranscriptExtractor {
 
   sendLogToBackend(level, msg, data = {}) {
     try {
-      fetch('http://localhost:3000/api/debug', {
+      chrome.runtime.sendMessage({
+        action: 'relayFetch',
+        url: 'http://localhost:3000/api/debug',
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ level, msg, data })
-      }).catch(() => {});
+        body: { level, msg, data }
+      });
     } catch(e) {}
   }
 
@@ -150,17 +151,16 @@ class TranscriptExtractor {
     
     this.sendLogToBackend('info', 'Sending chunk to backend', { textLength: text.length, timestamp });
     console.log(`[Transcript] Sending chunk to backend:`, text);
-    fetch('http://localhost:3000/api/transcript/chunk', {
+    
+    chrome.runtime.sendMessage({
+      action: 'relayFetch',
+      url: 'http://localhost:3000/api/transcript/chunk',
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+      body: {
         videoId: this.currentVideoId,
         text: text,
         timestamp: timestamp
-      })
-    }).catch(err => {
-      console.error('[Transcript] Backend fetch error:', err);
-      this.sendLogToBackend('error', 'Backend fetch error', { error: err.toString() });
+      }
     });
   }
 

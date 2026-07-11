@@ -53,6 +53,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     saveFactCheckToFirestore(message.data).then(sendResponse).catch(err => sendResponse({ error: err.message }));
     return true;
   }
+  
+  if (message.action === 'relayFetch') {
+    fetch(message.url, {
+      method: message.method || 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      body: message.body ? JSON.stringify(message.body) : undefined
+    })
+    .then(res => res.text())
+    .then(text => sendResponse({ success: true, data: text }))
+    .catch(err => sendResponse({ success: false, error: err.toString() }));
+    return true;
+  }
 });
 
 // Handle Google OAuth Login
