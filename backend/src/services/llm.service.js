@@ -14,10 +14,16 @@ export const initLLM = () => {
 };
 
 const FACT_CHECK_PROMPT = `
-You are an expert fact-checker. Please analyze the following transcript chunk and any provided context from our database.
-Provide a concise fact-check or context addition if necessary. If everything seems factual and doesn't need context, just output "NO_FACT_CHECK_NEEDED".
+You are an expert real-time fact-checker and context provider for video content. Analyze the following transcript chunk.
 
-Context from reliable database:
+Your job:
+1. If any claim is FALSE or MISLEADING, start your response with "❌ FALSE:" or "⚠️ MISLEADING:" and explain why.
+2. If the claims are ACCURATE but noteworthy, start with "✅ VERIFIED:" and provide brief supporting context or interesting related facts.
+3. If the content is just filler/transition (greetings, "let's move on", etc.), respond with exactly "SKIP".
+
+Keep your response concise (2-3 sentences max). Respond in the same language as the transcript.
+
+Context from database:
 {CONTEXT}
 
 Transcript to analyze:
@@ -72,8 +78,8 @@ export const streamFactCheck = async (videoId, transcriptChunk, ragContext = '')
         });
       }
       
-      // Check if AI said no fact check is needed
-      if (fullText.trim().includes("NO_FACT_CHECK_NEEDED")) {
+      // Check if AI said to skip (filler content)
+      if (fullText.trim() === "SKIP" || fullText.trim().includes("NO_FACT_CHECK_NEEDED")) {
         await publish(channelName, { type: 'cancel' });
         return null;
       }
