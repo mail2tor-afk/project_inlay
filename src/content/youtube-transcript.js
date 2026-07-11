@@ -99,21 +99,25 @@ class TranscriptExtractor {
     }
     
     this.isExtracting = true;
+    this.sendLogToBackend('info', `Extracting for video: ${videoId}`);
     console.log(`[Transcript] Extracting for video: ${videoId}`);
     
     const url = await this.getTranscriptUrl(videoId);
     if (!url) {
+      this.sendLogToBackend('warn', `No transcript URL found for video: ${videoId}`);
       console.log('[Transcript] No transcript available for this video');
       this.isExtracting = false;
       return null;
     }
     
+    this.sendLogToBackend('info', `Found transcript URL`, { url });
     const data = await this.fetchTranscript(url);
     if (data) {
       this.currentVideoId = videoId;
       this.transcriptData = data;
       this.lastSentIndex = -1;
       this.resetChunk();
+      this.sendLogToBackend('success', `Extracted ${data.length} segments`);
       console.log(`[Transcript] Extracted ${data.length} segments`);
       
       this.setupVideoListener();
@@ -122,6 +126,7 @@ class TranscriptExtractor {
       return data;
     }
     
+    this.sendLogToBackend('error', `fetchTranscript returned null`);
     this.isExtracting = false;
     return null;
   }
@@ -130,9 +135,20 @@ class TranscriptExtractor {
     this.currentChunk = { text: "", startTime: 0, wordCount: 0 };
   }
 
+  sendLogToBackend(level, msg, data = {}) {
+    try {
+      fetch('http://localhost:3000/api/debug', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ level, msg, data })
+      }).catch(() => {});
+    } catch(e) {}
+  }
+
   sendChunkToBackend(text, timestamp) {
     if (!text.trim()) return;
     
+    this.sendLogToBackend('info', 'Sending chunk to backend', { textLength: text.length, timestamp });
     console.log(`[Transcript] Sending chunk to backend:`, text);
     fetch('http://localhost:3000/api/transcript/chunk', {
       method: 'POST',
@@ -142,7 +158,10 @@ class TranscriptExtractor {
         text: text,
         timestamp: timestamp
       })
-    }).catch(err => console.error('[Transcript] Backend fetch error:', err));
+    }).catch(err => {
+      console.error('[Transcript] Backend fetch error:', err);
+      this.sendLogToBackend('error', 'Backend fetch error', { error: err.toString() });
+    });
   }
 
   setupVideoListener() {

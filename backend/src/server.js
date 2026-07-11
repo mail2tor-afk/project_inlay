@@ -36,6 +36,13 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', message: 'Backend is running' });
 });
 
+// Diagnostic endpoint to receive logs from Content Scripts
+app.post('/api/debug', (req, res) => {
+  const { level, msg, data } = req.body;
+  console.log(`[Frontend Debug][${level.toUpperCase()}] ${msg}`, data ? JSON.stringify(data) : '');
+  res.status(200).send();
+});
+
 // Endpoint to receive chunked transcript from the Extension (Master Listener)
 app.post('/api/transcript/chunk', async (req, res) => {
   const { videoId, text, timestamp } = req.body;
