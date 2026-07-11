@@ -21,8 +21,10 @@
     isMinimized: false,
     isPaused: false,
     isSettingsOpen: false,
-    fontSize: 15,    // Default font size (px)
+    fontSize: 18,    // Default font size (px) - updated from 15 to 18
     opacity: 85,     // Default background opacity (%)
+    showFact: true,  // Toggle visibility of จริง
+    showMisleading: true, // Toggle visibility of บิดเบือน
     position: { ...CONFIG.defaultPosition },
     size: { ...CONFIG.defaultSize },
     dragStart: { x: 0, y: 0 },
@@ -145,9 +147,23 @@
         <div class="fc-setting-row">
           <label>ขนาดตัวอักษร (Font Size):</label>
           <div class="fc-font-btns">
-            <button class="fc-font-btn" data-size="13">เล็ก</button>
-            <button class="fc-font-btn fc-font-active" data-size="15">กลาง</button>
-            <button class="fc-font-btn" data-size="18">ใหญ่</button>
+            <button class="fc-font-btn" data-size="14">เล็ก</button>
+            <button class="fc-font-btn fc-font-active" data-size="18">กลาง</button>
+            <button class="fc-font-btn" data-size="32">ใหญ่</button>
+          </div>
+        </div>
+        <div class="fc-setting-row">
+          <label>ตัวกรองข้อมูล (Filters):</label>
+          <div class="fc-filter-options">
+            <label class="fc-filter-checkbox-label">
+              <input type="checkbox" id="fc-filter-fact" checked> จริง
+            </label>
+            <label class="fc-filter-checkbox-label">
+              <input type="checkbox" id="fc-filter-misleading" checked> บิดเบือน
+            </label>
+            <label class="fc-filter-checkbox-label">
+              <input type="checkbox" id="fc-filter-false" checked disabled> เท็จ (ปิดไม่ได้)
+            </label>
           </div>
         </div>
       </div>
@@ -335,6 +351,33 @@
         accent-color: #3b82f6;
         cursor: pointer;
         margin: 4px 0;
+      }
+
+      .fc-filter-options {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        margin-top: 4px;
+      }
+
+      .fc-filter-checkbox-label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: #e2e8f0 !important;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      
+      .fc-filter-checkbox-label input[type="checkbox"] {
+        cursor: pointer;
+        width: 14px;
+        height: 14px;
+        accent-color: #3b82f6;
+      }
+
+      .fc-filter-checkbox-label input[type="checkbox"]:disabled {
+        cursor: not-allowed;
       }
 
       .fc-font-btns {
@@ -656,6 +699,19 @@
     overlay.style.setProperty('--fc-font-size', state.fontSize + 'px');
   }
 
+  function applyFilters() {
+    const cards = document.querySelectorAll('.fc-fact-item');
+    cards.forEach(card => {
+      if (card.classList.contains('fc-fact')) {
+        card.style.display = state.showFact ? 'block' : 'none';
+      } else if (card.classList.contains('fc-misleading')) {
+        card.style.display = state.showMisleading ? 'block' : 'none';
+      } else if (card.classList.contains('fc-false')) {
+        card.style.display = 'block'; // Always show FALSE
+      }
+    });
+  }
+
   // ============================================
   // EVENT LISTENERS
   // ============================================
@@ -727,6 +783,67 @@
         saveState();
       });
     });
+
+    // Checkboxes Filter Controls
+    const filterFactCheckbox = overlay.querySelector('#fc-filter-fact');
+    const filterMisleadingCheckbox = overlay.querySelector('#fc-filter-misleading');
+    
+    // Set initial checkbox states based on restored config
+    if (filterFactCheckbox) filterFactCheckbox.checked = state.showFact;
+    if (filterMisleadingCheckbox) filterMisleadingCheckbox.checked = state.showMisleading;
+
+    if (filterFactCheckbox) {
+      filterFactCheckbox.addEventListener('change', (e) => {
+        state.showFact = e.target.checked;
+        applyFilters();
+        saveState();
+      });
+    }
+
+    if (filterMisleadingCheckbox) {
+      filterMisleadingCheckbox.addEventListener('change', (e) => {
+        state.showMisleading = e.target.checked;
+        applyFilters();
+        saveState();
+      });
+    }
+
+    // Delegated click event handling for fact check list (close and vote buttons)
+    const contentDiv = overlay.querySelector('.fc-fact-checks');
+    if (contentDiv) {
+      contentDiv.addEventListener('click', (e) => {
+        // 1. Close Button Dismiss
+        const closeBtn = e.target.closest('.fc-card-close');
+        if (closeBtn) {
+          const card = closeBtn.closest('.fc-fact-item');
+          if (card) {
+            console.log(`[UI] Dismissed card: ${card.id}`);
+            if (card === currentStreamingItem) {
+              currentStreamingItem = null;
+              textBuffer = "";
+            }
+            card.remove();
+          }
+          return;
+        }
+
+        // 2. Like Button
+        const likeBtn = e.target.closest('.fc-vote-like');
+        if (likeBtn) {
+          const factCheckId = likeBtn.dataset.id;
+          handleVoteClick(factCheckId, 'like');
+          return;
+        }
+
+        // 3. Dislike Button
+        const dislikeBtn = e.target.closest('.fc-vote-dislike');
+        if (dislikeBtn) {
+          const factCheckId = dislikeBtn.dataset.id;
+          handleVoteClick(factCheckId, 'dislike');
+          return;
+        }
+      });
+    }
 
     // Resizing (Bottom-Right Handle)
     resizeHandle.addEventListener('mousedown', startResize);
@@ -866,8 +983,10 @@
         state.size = { ...CONFIG.defaultSize, ...parsed.size };
         state.isVisible = parsed.isVisible !== false;
         state.isPaused = parsed.isPaused === true;
-        state.fontSize = parsed.fontSize || 15;
+        state.fontSize = parsed.fontSize || 18;
         state.opacity = parsed.opacity !== undefined ? parsed.opacity : 85;
+        state.showFact = parsed.showFact !== false;
+        state.showMisleading = parsed.showMisleading !== false;
         
         const overlay = document.getElementById('fact-check-overlay');
         applyStateStyles();
@@ -896,6 +1015,12 @@
             btn.classList.remove('fc-font-active');
           }
         });
+
+        // Update Checkbox ticked states
+        const filterFactCheckbox = overlay.querySelector('#fc-filter-fact');
+        const filterMisleadingCheckbox = overlay.querySelector('#fc-filter-misleading');
+        if (filterFactCheckbox) filterFactCheckbox.checked = state.showFact;
+        if (filterMisleadingCheckbox) filterMisleadingCheckbox.checked = state.showMisleading;
         
         // FORCE overlay to always be visible for debugging
         state.isVisible = true;
@@ -914,7 +1039,9 @@
         isVisible: state.isVisible,
         isPaused: state.isPaused,
         fontSize: state.fontSize,
-        opacity: state.opacity
+        opacity: state.opacity,
+        showFact: state.showFact,
+        showMisleading: state.showMisleading
       }));
     } catch (error) {
       console.error('[Fact-Check Overlay] Failed to save state:', error);
@@ -1014,21 +1141,24 @@
         </div>
       `;
 
-      // Set up click listener for close button
-      factItem.querySelector('.fc-card-close').addEventListener('click', () => {
-        factItem.remove();
-      });
+      // If user has already voted, apply active classes
+      if (userVotes[factCheckId] === 'like') {
+        const btn = factItem.querySelector('.fc-vote-like');
+        if (btn) btn.classList.add('fc-voted-like');
+      }
+      if (userVotes[factCheckId] === 'dislike') {
+        const btn = factItem.querySelector('.fc-vote-dislike');
+        if (btn) btn.classList.add('fc-voted-dislike');
+      }
 
-      // Set up click listeners for Like/Dislike buttons
-      const likeBtn = factItem.querySelector('.fc-vote-like');
-      const dislikeBtn = factItem.querySelector('.fc-vote-dislike');
-
-      likeBtn.addEventListener('click', () => handleVoteClick(factCheckId, 'like'));
-      dislikeBtn.addEventListener('click', () => handleVoteClick(factCheckId, 'dislike'));
-
-      // If user has already voted, apply CSS state
-      if (userVotes[factCheckId] === 'like') likeBtn.classList.add('fc-voted-like');
-      if (userVotes[factCheckId] === 'dislike') dislikeBtn.classList.add('fc-voted-dislike');
+      // Apply initial filter visibility display
+      if (verdictClass === 'fact') {
+        factItem.style.display = state.showFact ? 'block' : 'none';
+      } else if (verdictClass === 'misleading') {
+        factItem.style.display = state.showMisleading ? 'block' : 'none';
+      } else if (verdictClass === 'false') {
+        factItem.style.display = 'block'; // FALSE is always visible
+      }
 
       // Prepend at the top (newest first!)
       if (contentDiv.firstChild) {
@@ -1303,11 +1433,15 @@
             </div>
             <div class="fc-fact-text">${parsed.analysis}</div>
           `;
-          
-          // Click listener for close button
-          currentStreamingItem.querySelector('.fc-card-close').addEventListener('click', () => {
-            currentStreamingItem.remove();
-          });
+
+          // Apply initial filter visibility display
+          if (verdictClass === 'fact') {
+            currentStreamingItem.style.display = state.showFact ? 'block' : 'none';
+          } else if (verdictClass === 'misleading') {
+            currentStreamingItem.style.display = state.showMisleading ? 'block' : 'none';
+          } else if (verdictClass === 'false') {
+            currentStreamingItem.style.display = 'block'; // FALSE is always visible
+          }
         }
       } 
       else if (data.type === 'done') {
@@ -1369,20 +1503,24 @@
               </div>
             `;
             
-            // Set up click listener for close button
-            currentStreamingItem.querySelector('.fc-card-close').addEventListener('click', () => {
-              currentStreamingItem.remove();
-            });
+            // Apply initial filter visibility display
+            if (verdictClass === 'fact') {
+              currentStreamingItem.style.display = state.showFact ? 'block' : 'none';
+            } else if (verdictClass === 'misleading') {
+              currentStreamingItem.style.display = state.showMisleading ? 'block' : 'none';
+            } else if (verdictClass === 'false') {
+              currentStreamingItem.style.display = 'block'; // FALSE is always visible
+            }
 
-            // Set up click listeners for Like/Dislike buttons
-            const likeBtn = currentStreamingItem.querySelector('.fc-vote-like');
-            const dislikeBtn = currentStreamingItem.querySelector('.fc-vote-dislike');
-
-            likeBtn.addEventListener('click', () => handleVoteClick(factCheckId, 'like'));
-            dislikeBtn.addEventListener('click', () => handleVoteClick(factCheckId, 'dislike'));
-
-            if (userVotes[factCheckId] === 'like') likeBtn.classList.add('fc-voted-like');
-            if (userVotes[factCheckId] === 'dislike') dislikeBtn.classList.add('fc-voted-dislike');
+            // Apply voted active state if applicable
+            if (userVotes[factCheckId] === 'like') {
+              const btn = currentStreamingItem.querySelector('.fc-vote-like');
+              if (btn) btn.classList.add('fc-voted-like');
+            }
+            if (userVotes[factCheckId] === 'dislike') {
+              const btn = currentStreamingItem.querySelector('.fc-vote-dislike');
+              if (btn) btn.classList.add('fc-voted-dislike');
+            }
             
             currentStreamingItem = null;
             textBuffer = "";
