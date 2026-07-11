@@ -1,24 +1,20 @@
 // Background Service Worker for Chrome Extension
 // Handles OAuth, Authentication, and Message Routing
 
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-import { getAuth, signInWithCustomToken, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-import { getFirestore, doc, setDoc, getDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+// Temporarily removed Firebase remote imports (Manifest V3 forbids remote code)
+// We will mock them for testing OAuth login.
+const firebaseConfig = {};
 
-// TODO: Replace with your Firebase config
-const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID"
-};
+const app = {};
+const auth = {};
+const db = {};
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+const doc = () => {};
+const setDoc = async () => {};
+const getDoc = async () => ({ exists: () => false });
+const serverTimestamp = () => Date.now();
+const signInWithCustomToken = async () => ({ user: { uid: 'mock_uid', email: 'test@example.com', displayName: 'Mock User', photoURL: '' } });
+const signOut = async () => {};
 
 let currentUser = null;
 let guestMode = true;
@@ -89,8 +85,8 @@ async function handleLogin() {
 // Get OAuth token using Chrome Identity API
 function getChromeIdentityToken() {
   return new Promise((resolve, reject) => {
-    // TODO: Replace with your actual Client ID from Google Cloud Console
-    const clientId = 'YOUR_GOOGLE_CLIENT_ID_HERE.apps.googleusercontent.com';
+    // Google OAuth Client ID
+    const clientId = '127172410306-jv7sgstitmbc9nukriue4o1vvd1oco68.apps.googleusercontent.com';
     
     chrome.identity.getAuthToken({ 
       interactive: true,
@@ -186,11 +182,13 @@ async function saveFactCheckToFirestore(data) {
 }
 
 // Listen for token changes (e.g., token expiration)
+/* chrome.identity.onTokenRemoved doesn't exist in standard Chrome API
 chrome.identity.onTokenRemoved.addListener((details) => {
   console.log('[Background] Token removed:', details);
   if (details.interactive) {
     handleLogout();
   }
 });
+*/
 
 console.log('[Background] Service worker initialized');
