@@ -792,6 +792,15 @@
           textBuffer = "";
         }
       }
+      else if (data.type === 'error') {
+        // Show error on overlay so user knows what's wrong
+        window.FactCheckOverlay.addFactCheck({
+          verdict: 'false',
+          text: data.message || 'An error occurred during fact-checking.',
+          source: 'System Error'
+        });
+        window.FactCheckOverlay.updateStatus('Error - check API key');
+      }
     });
   }
 

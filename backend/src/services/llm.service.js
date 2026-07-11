@@ -47,42 +47,61 @@ export const streamFactCheck = async (videoId, transcriptChunk, ragContext = '')
     return fullText.trim();
   }
 
-  try {
-    // We use gemini-1.5-pro for deep fact checking (or flash if preferred for cost)
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-    
-    const prompt = FACT_CHECK_PROMPT
-      .replace('{CONTEXT}', ragContext || 'No context found.')
-      .replace('{TRANSCRIPT}', transcriptChunk);
-
-    const result = await model.generateContentStream(prompt);
-    
-    let fullText = "";
-    
-    for await (const chunk of result.stream) {
-      const chunkText = chunk.text();
-      fullText += chunkText;
+  const MAX_RETRIES = 3;
+  
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
       
-      // Broadcast the accumulated text to all connected users
-      await publish(channelName, { 
-        type: 'chunk', 
-        text: fullText 
-      });
-    }
-    
-    // Check if AI said no fact check is needed
-    if (fullText.trim().includes("NO_FACT_CHECK_NEEDED")) {
-      await publish(channelName, { type: 'cancel' });
+      const prompt = FACT_CHECK_PROMPT
+        .replace('{CONTEXT}', ragContext || 'No context found.')
+        .replace('{TRANSCRIPT}', transcriptChunk);
+
+      const result = await model.generateContentStream(prompt);
+      
+      let fullText = "";
+      
+      for await (const chunk of result.stream) {
+        const chunkText = chunk.text();
+        fullText += chunkText;
+        
+        // Broadcast the accumulated text to all connected users
+        await publish(channelName, { 
+          type: 'chunk', 
+          text: fullText 
+        });
+      }
+      
+      // Check if AI said no fact check is needed
+      if (fullText.trim().includes("NO_FACT_CHECK_NEEDED")) {
+        await publish(channelName, { type: 'cancel' });
+        return null;
+      }
+      
+      // Broadcast completion
+      await publish(channelName, { type: 'done', text: fullText.trim() });
+      return fullText.trim();
+
+    } catch (error) {
+      const isRateLimit = error.status === 429;
+      
+      if (isRateLimit && attempt < MAX_RETRIES) {
+        // Extract retry delay from error if available, default to exponential backoff
+        const retryDelay = error.errorDetails?.find(d => d.retryDelay)?.retryDelay;
+        const waitMs = retryDelay ? parseInt(retryDelay) * 1000 : (attempt * 15000);
+        console.log(`[LLM] Rate limited (attempt ${attempt}/${MAX_RETRIES}). Retrying in ${waitMs/1000}s...`);
+        await new Promise(r => setTimeout(r, waitMs));
+        continue;
+      }
+      
+      console.error(`[LLM] Error in streamFactCheck (attempt ${attempt}):`, error.message || error);
+      
+      const errorMsg = isRateLimit 
+        ? 'API quota exceeded. Please check your Gemini API key and billing.'
+        : 'Fact check failed: ' + (error.message || 'Unknown error');
+      
+      await publish(channelName, { type: 'error', message: errorMsg });
       return null;
     }
-    
-    // Broadcast completion
-    await publish(channelName, { type: 'done', text: fullText.trim() });
-    return fullText.trim();
-
-  } catch (error) {
-    console.error('[LLM] Error in streamFactCheck:', error);
-    await publish(channelName, { type: 'error', message: 'Fact check failed' });
-    return null;
   }
 };
