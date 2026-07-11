@@ -82,29 +82,57 @@ export const streamFactCheck = async (videoId, transcriptChunk, ragContext = '')
     const result = await model.generateContentStream(prompt);
     
     let fullText = "";
+    let shouldStream = null; // null = undecided, true = stream, false = discard/skip
     
     for await (const chunk of result.stream) {
       const chunkText = chunk.text();
       fullText += chunkText;
       
-      // Broadcast the accumulated text to all connected users
-      await publish(channelName, { 
-        type: 'chunk', 
-        text: fullText 
-      });
+      // Determine if we should stream this response to the client
+      if (shouldStream === null) {
+        // If the model output indicates an early skip
+        if (fullText.includes("SKIP") || fullText.toLowerCase().includes("no_fact_check_needed")) {
+          shouldStream = false;
+          console.log(`[LLM] Skipped early: filler or accurate content`);
+        } 
+        // Once we hit the VERDICT tag, we can decide based on the value
+        else if (fullText.includes("[VERDICT:")) {
+          const verdictMatch = fullText.match(/\[VERDICT:\s*([^\]]*?)\]/i);
+          if (verdictMatch) {
+            const verdict = verdictMatch[1].trim().toUpperCase();
+            if (verdict === 'FALSE' || verdict === 'MISLEADING') {
+              shouldStream = true;
+              console.log(`[LLM] Verdict is ${verdict} - starting stream for ${videoId}`);
+              // Send the initial buffered text up to this point
+              await publish(channelName, { 
+                type: 'chunk', 
+                text: fullText 
+              });
+            } else {
+              shouldStream = false;
+              console.log(`[LLM] Verdict is ${verdict} - skipping stream for ${videoId}`);
+            }
+          }
+        }
+      } else if (shouldStream === true) {
+        // Broadcast the accumulated text to the client
+        await publish(channelName, { 
+          type: 'chunk', 
+          text: fullText 
+        });
+      }
     }
     
-    console.log(`[LLM] Completed fact-check: "${fullText.substring(0, 50)}..."`);
+    console.log(`[LLM] Completed processing for ${videoId}. shouldStream: ${shouldStream}`);
     
-    // Check if AI said to skip (filler content)
-    if (fullText.trim() === "SKIP" || fullText.trim().includes("NO_FACT_CHECK_NEEDED")) {
+    if (shouldStream === true) {
+      // Broadcast completion
+      await publish(channelName, { type: 'done', text: fullText.trim() });
+      return fullText.trim();
+    } else {
       await publish(channelName, { type: 'cancel' });
       return null;
     }
-    
-    // Broadcast completion
-    await publish(channelName, { type: 'done', text: fullText.trim() });
-    return fullText.trim();
 
   } catch (error) {
     console.error(`[LLM] Error:`, error.message || error);
