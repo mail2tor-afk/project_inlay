@@ -548,9 +548,9 @@
         overlay.style.width = state.size.width + 'px';
         overlay.style.height = state.size.height + 'px';
         
-        if (!state.isVisible) {
-          overlay.classList.add('fc-hidden');
-        }
+        // FORCE overlay to always be visible for debugging
+        state.isVisible = true;
+        overlay.classList.remove('fc-hidden');
       }
     } catch (error) {
       console.error('[Fact-Check Overlay] Failed to load state:', error);
