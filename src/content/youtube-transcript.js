@@ -24,41 +24,44 @@ class TranscriptExtractor {
   }
 
   async getTranscriptUrl(videoId) {
-    try {
-      if (window.ytInitialPlayerResponse && 
-          window.ytInitialPlayerResponse.captions && 
-          window.ytInitialPlayerResponse.captions.playerCaptionsTracklistRenderer &&
-          window.ytInitialPlayerResponse.captions.playerCaptionsTracklistRenderer.captionTracks) {
+    return new Promise((resolve) => {
+      const messageHandler = (event) => {
+        if (event.source !== window || !event.data || event.data.type !== 'FC_YOUTUBE_DATA') return;
+        window.removeEventListener('message', messageHandler);
         
-        const tracks = window.ytInitialPlayerResponse.captions.playerCaptionsTracklistRenderer.captionTracks;
-        const track = tracks.find(t => t.languageCode === 'en' || t.languageCode === 'th') || tracks[0];
-        if (track) return track.baseUrl;
-      }
-
-      const response = await fetch(`https://www.youtube.com/watch?v=${videoId}`);
-      const html = await response.text();
-      
-      const regex = /"captions":({.*?})/;
-      const match = html.match(regex);
-      
-      if (match && match[1]) {
-        let captionsJson = match[1];
-        try {
-           const parsed = JSON.parse(captionsJson);
-           if (parsed.playerCaptionsTracklistRenderer && parsed.playerCaptionsTracklistRenderer.captionTracks) {
-             const tracks = parsed.playerCaptionsTracklistRenderer.captionTracks;
-             const track = tracks.find(t => t.languageCode === 'en' || t.languageCode === 'th') || tracks[0];
-             if (track) return track.baseUrl;
-           }
-        } catch (e) {
-           console.log('[Transcript] Could not parse captions from HTML block');
+        const data = event.data.payload;
+        if (data && data.captions && data.captions.playerCaptionsTracklistRenderer) {
+          const tracks = data.captions.playerCaptionsTracklistRenderer.captionTracks;
+          if (tracks && tracks.length > 0) {
+            const track = tracks.find(t => t.languageCode === 'en' || t.languageCode === 'th') || tracks[0];
+            resolve(track.baseUrl);
+            return;
+          }
         }
-      }
-      return null;
-    } catch (error) {
-      console.error('[Transcript] Error finding transcript URL:', error);
-      return null;
-    }
+        resolve(null);
+      };
+      
+      window.addEventListener('message', messageHandler);
+      
+      // Inject script to main world to read ytInitialPlayerResponse (bypassing isolated world)
+      const script = document.createElement('script');
+      script.textContent = `
+        try {
+          window.postMessage({
+            type: 'FC_YOUTUBE_DATA',
+            payload: window.ytInitialPlayerResponse || null
+          }, '*');
+        } catch(e) {}
+      `;
+      document.documentElement.appendChild(script);
+      script.remove();
+      
+      // Timeout fallback
+      setTimeout(() => {
+        window.removeEventListener('message', messageHandler);
+        resolve(null);
+      }, 3000);
+    });
   }
 
   async fetchTranscript(url) {
