@@ -822,7 +822,13 @@
               currentStreamingItem = null;
               textBuffer = "";
             }
-            card.remove();
+            if (card && typeof card.remove === 'function') {
+              try {
+                card.remove();
+              } catch (err) {
+                console.error('[Fact-Check Overlay] Error calling card.remove():', err);
+              }
+            }
           }
           return;
         }
@@ -1528,11 +1534,15 @@
         }
       }
       else if (data.type === 'cancel') {
-        if (currentStreamingItem) {
-          currentStreamingItem.remove();
-          currentStreamingItem = null;
-          textBuffer = "";
+        if (currentStreamingItem && typeof currentStreamingItem.remove === 'function') {
+          try {
+            currentStreamingItem.remove();
+          } catch (err) {
+            console.error('[Fact-Check Overlay] Error calling currentStreamingItem.remove():', err);
+          }
         }
+        currentStreamingItem = null;
+        textBuffer = "";
       }
       else if (data.type === 'error') {
         window.FactCheckOverlay.addFactCheck({

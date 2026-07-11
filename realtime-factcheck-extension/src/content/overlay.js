@@ -552,8 +552,12 @@
       
       // Remove placeholder if exists
       const placeholder = content.querySelector('.overlay-placeholder');
-      if (placeholder) {
-        placeholder.remove();
+      if (placeholder && typeof placeholder.remove === 'function') {
+        try {
+          placeholder.remove();
+        } catch (err) {
+          console.error('[Fact-Check Extension] Error removing placeholder:', err);
+        }
       }
       
       content.insertBefore(item, content.firstChild);
