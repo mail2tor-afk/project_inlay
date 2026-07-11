@@ -1153,16 +1153,17 @@
       window.FactCheckOverlay.updateStatus(state.isPaused ? 'Analysis Paused' : 'Connected to Backend');
       window.FactCheckOverlay.socket = socket; // Expose socket to global IIFE scope for voting
       
-      function emitJoinVideo() {
-        const urlParams = new URLSearchParams(window.location.search);
-        let videoId = urlParams.get('v');
-        if (videoId) {
+      const urlParams = new URLSearchParams(window.location.search);
+      let videoId = urlParams.get('v'); // Closure variable tracking currently joined video
+      
+      function emitJoinVideo(id) {
+        if (id) {
           // Robust DOM extraction of video meta info
           const videoTitle = document.querySelector('h1.ytd-watch-metadata yt-formatted-string')?.textContent || document.title;
           const channelName = document.querySelector('#owner ytd-channel-name a')?.textContent || document.querySelector('ytd-channel-name')?.textContent || '';
           
           socket.emit('join_video', {
-            videoId: videoId,
+            videoId: id,
             metadata: {
               title: videoTitle.trim(),
               channel: channelName.trim()
@@ -1171,7 +1172,7 @@
         }
       }
 
-      emitJoinVideo();
+      emitJoinVideo(videoId);
       
       // Start sending time updates every 1 second
       timeUpdateInterval = setInterval(() => {
@@ -1181,20 +1182,20 @@
         if (videoElement && videoElement.currentTime > 0) {
           const currentUrlParams = new URLSearchParams(window.location.search);
           const currentVideoId = currentUrlParams.get('v');
-          const urlParams = new URLSearchParams(window.location.search);
-          let videoId = urlParams.get('v');
           
           if (currentVideoId && currentVideoId !== videoId) {
+            console.log(`[Socket] Navigated from ${videoId} to ${currentVideoId}. Leaving and joining.`);
             socket.emit('leave_video', videoId);
             // Reset the UI overlays and clear old cards
             window.FactCheckOverlay.resetUI();
             
+            videoId = currentVideoId; // Update tracking variable
             // Re-emit join with the new video meta
-            emitJoinVideo();
+            emitJoinVideo(videoId);
           }
           
           socket.emit('video_time_update', {
-            videoId: currentVideoId,
+            videoId: videoId,
             currentTime: videoElement.currentTime
           });
         }
