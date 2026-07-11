@@ -770,10 +770,7 @@
   }
 
   // Start initialization
-  if (document.readyState === 'complete') {
-    waitForYouTube();
-  } else {
-    window.addEventListener('load', waitForYouTube);
-  }
+  console.log('[Fact-Check Overlay] Content script loaded, starting initialization...');
+  waitForYouTube();
 
 })();
