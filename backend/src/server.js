@@ -9,6 +9,7 @@ import { initRag } from './services/rag.service.js';
 import { initLLM, getFactCheckPrompt, updatePromptConfig, resetPromptConfig, testPromptFactCheck, DEFAULT_FACT_CHECK_PROMPT } from './services/llm.service.js';
 import { processTranscriptChunk } from './services/triage.service.js';
 import { setupSocketHandlers } from './sockets/broadcast.handler.js';
+import { getAuditReports, resolveAuditReport } from './services/audit.service.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -154,6 +155,30 @@ app.get('/api/factchecks/history-samples', (req, res) => {
       }
     }
     res.json([]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET list of audit reports
+app.get('/api/factchecks/audit-reports', (req, res) => {
+  try {
+    const reports = getAuditReports();
+    res.json(reports);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST resolve/dismiss an audit report
+app.post('/api/factchecks/audit-reports/resolve', (req, res) => {
+  const { id } = req.body;
+  if (!id) {
+    return res.status(400).json({ error: 'Missing report ID' });
+  }
+  try {
+    const success = resolveAuditReport(id);
+    res.json({ success });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

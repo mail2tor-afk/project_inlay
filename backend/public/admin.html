@@ -124,6 +124,10 @@
       position: relative;
     }
 
+    .full-width {
+      grid-column: 1 / -1;
+    }
+
     .panel-header {
       display: flex;
       justify-content: space-between;
@@ -347,6 +351,53 @@
       font-weight: bold;
     }
 
+    /* Audit Logs styling */
+    .audit-log-item {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    .audit-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding-bottom: 12px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .audit-discrepancy-card {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 10px;
+    }
+
+    @media (max-width: 768px) {
+      .audit-discrepancy-card {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .audit-box-realtime {
+      background: rgba(239, 68, 68, 0.04);
+      border: 1px dashed rgba(239, 68, 68, 0.2);
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .audit-box-audited {
+      background: rgba(16, 185, 129, 0.04);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+      border-radius: 8px;
+      padding: 12px;
+    }
+
     /* Toast Notification */
     .toast {
       position: fixed;
@@ -398,7 +449,7 @@
       <div class="brand-title">Prompt & Sandbox Dashboard (แผงควบคุมหลังบ้าน)</div>
     </div>
     <div class="header-links">
-      <a href="/api/factchecks/export" target="_blank">📥 Export History Log</a>
+      <!-- Removed header export link since history is managed internally now -->
     </div>
   </header>
 
@@ -487,6 +538,19 @@
         <div class="result-console" id="test-output">รอกดทดสอบระบบ...</div>
       </div>
     </div>
+
+    <!-- Full Width Panel: Post-Video Audit Logs -->
+    <div class="glass-panel full-width">
+      <div class="panel-header">
+        <div class="panel-title">📋 รายงานความผิดพลาดหลังจบคลิป (Post-Video Audit Logs)</div>
+        <button class="btn btn-secondary" onclick="fetchAuditReports()">🔄 โหลดรายงานใหม่</button>
+      </div>
+      <div id="audit-logs-container">
+        <div style="text-align: center; color: var(--text-muted); padding: 24px;">
+          กำลังโหลดประวัติรายงานการตรวจทาน AI...
+        </div>
+      </div>
+    </div>
   </main>
 
   <!-- Notification Toast -->
@@ -507,6 +571,7 @@
     const btnRunTestEl = document.getElementById('btn-run-test');
     const testOutputEl = document.getElementById('test-output');
     const toastEl = document.getElementById('toast-el');
+    const auditContainerEl = document.getElementById('audit-logs-container');
 
     // Validation Check DOM elements
     const valTranscript = document.getElementById('val-transcript');
@@ -553,6 +618,96 @@
         });
       } catch (err) {
         console.error('Failed to load history samples:', err);
+      }
+    }
+
+    // Fetch Audit Reports
+    async function fetchAuditReports() {
+      try {
+        const res = await fetch('/api/factchecks/audit-reports');
+        const reports = await res.json();
+        
+        const unresolvedReports = reports.filter(r => !r.resolved);
+        
+        if (unresolvedReports.length === 0) {
+          auditContainerEl.innerHTML = `
+            <div style="text-align: center; color: var(--text-muted); padding: 24px; font-size: 14px;">
+              🎉 ยังไม่มีรายงานความผิดพลาดของ AI หรือตรวจสอบความถูกต้องครบถ้วนแล้ว
+            </div>
+          `;
+          return;
+        }
+
+        auditContainerEl.innerHTML = '';
+        unresolvedReports.forEach(report => {
+          const card = document.createElement('div');
+          card.className = 'audit-log-item';
+          
+          const date = new Date(report.auditTimestamp).toLocaleString();
+          
+          let discrepanciesHtml = '';
+          report.discrepancies.forEach(disc => {
+            discrepanciesHtml += `
+              <div class="audit-discrepancy-card" style="margin-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 12px;">
+                <div class="audit-box-realtime">
+                  <div style="font-weight: 600; color: var(--danger); font-size: 11px; margin-bottom: 6px; text-transform: uppercase;">
+                    🔴 แสดงผลเรียลไทม์ (Real-time AI)
+                  </div>
+                  <div style="font-size: 13px; line-height: 1.5;">
+                    <strong>หัวข้อ:</strong> ${disc.topic}<br>
+                    <strong>การตัดสิน:</strong> <span class="console-tag">[${disc.realtimeVerdict}]</span><br>
+                    <strong>บทวิเคราะห์:</strong> ${disc.realtimeAnalysis}
+                  </div>
+                </div>
+                <div class="audit-box-audited">
+                  <div style="font-weight: 600; color: var(--success); font-size: 11px; margin-bottom: 6px; text-transform: uppercase;">
+                    🟢 ผลการทบทวน (Auditor AI)
+                  </div>
+                  <div style="font-size: 13px; line-height: 1.5;">
+                    <strong>การตัดสินที่ถูกต้อง:</strong> <span class="console-tag" style="color: var(--success)">[${disc.auditedVerdict}]</span><br>
+                    <strong>คำอธิบายที่ควรแก้ไข:</strong> ${disc.auditedAnalysis}
+                  </div>
+                </div>
+              </div>
+            `;
+          });
+
+          card.innerHTML = `
+            <div class="audit-meta">
+              <span>📹 <strong>Video ID:</strong> ${report.videoId} | ⏰ <strong>ทบทวนเมื่อ:</strong> ${date}</span>
+              <button class="btn btn-danger" style="padding: 4px 10px; font-size: 12px;" onclick="resolveReport('${report.id}')">
+                ✓ ทำเครื่องหมายว่าแก้ไขแล้ว (Dismiss)
+              </button>
+            </div>
+            <div style="font-size: 14px; font-weight: 600; color: var(--text-main);">
+              พบข้อขัดแย้งจำนวน ${report.discrepancies.length} จุด:
+            </div>
+            ${discrepanciesHtml}
+          `;
+          
+          auditContainerEl.appendChild(card);
+        });
+      } catch (err) {
+        console.error('Failed to fetch audit reports:', err);
+      }
+    }
+
+    async function resolveReport(reportId) {
+      if (!confirm('คุณยืนยันว่าแก้ไข/รับทราบรายงานความขัดแย้งนี้แล้วใช่หรือไม่?')) return;
+      try {
+        const res = await fetch('/api/factchecks/audit-reports/resolve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: reportId })
+        });
+        if (res.ok) {
+          showToast('รับทราบรายงานความผิดพลาดเรียบร้อยแล้ว', 'success');
+          fetchAuditReports();
+        } else {
+          showToast('ไม่สามารถอัปเดตรายงานได้', 'error');
+        }
+      } catch (err) {
+        showToast('การส่งข้อมูลล้มเหลว', 'error');
       }
     }
 
@@ -721,6 +876,7 @@
     // Init Page load
     fetchPrompt();
     fetchHistorySamples();
+    fetchAuditReports();
   </script>
 </body>
 </html>
