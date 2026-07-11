@@ -61,6 +61,36 @@ async function handleLogin() {
     // 1. Get OAuth token from Chrome Identity
     const oauthToken = await getChromeIdentityToken();
     
+    // Check if Firebase is configured (mock if not)
+    if (!auth || !auth.app || auth.app.options.apiKey === "YOUR_API_KEY") {
+      console.warn('[Background] Firebase not configured properly. Using Mock User from Chrome Identity.');
+      // Mock user info using Chrome Identity API fallback
+      const mockUser = {
+        uid: 'mock-user-123',
+        email: 'testuser@example.com',
+        displayName: 'Test User',
+        photoURL: ''
+      };
+      
+      // Try to get real user info from Google APIs using the token
+      try {
+        const res = await fetch('https://www.googleapis.com/oauth2/v1/userinfo?alt=json&access_token=' + oauthToken);
+        const userInfo = await res.json();
+        if (userInfo.id) {
+          mockUser.uid = userInfo.id;
+          mockUser.email = userInfo.email;
+          mockUser.displayName = userInfo.name || userInfo.email;
+          mockUser.photoURL = userInfo.picture || '';
+        }
+      } catch (e) {
+         console.warn('[Background] Could not fetch Google user info, using default mock');
+      }
+
+      currentUser = mockUser;
+      guestMode = false;
+      return { success: true, user: mockUser, isGuest: false };
+    }
+    
     // 2. Create a Firebase credential with the OAuth token
     const credential = GoogleAuthProvider.credential(null, oauthToken);
     
