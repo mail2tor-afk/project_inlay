@@ -29,12 +29,17 @@ export const initRedis = () => {
   }
 };
 
+// In-memory pub/sub for mock mode (no Redis)
+import { EventEmitter } from 'events';
+const mockPubSub = new EventEmitter();
+
 // Publish a message to a channel
 export const publish = async (channel, message) => {
   if (redisPublisher) {
     await redisPublisher.publish(channel, JSON.stringify(message));
   } else {
-    console.log(`[Redis Mock] Publish to ${channel}:`, message);
+    // Mock mode: emit to in-memory listeners
+    mockPubSub.emit(channel, message);
   }
 };
 
@@ -59,7 +64,9 @@ export const subscribe = (channel, callback) => {
       }
     });
   } else {
+    // Mock mode: listen on in-memory EventEmitter
     console.log(`[Redis Mock] Subscribed to ${channel}`);
+    mockPubSub.on(channel, callback);
   }
 };
 
