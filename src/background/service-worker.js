@@ -61,10 +61,29 @@ async function handleLogin() {
     // 1. Get OAuth token from Chrome Identity
     const oauthToken = await getChromeIdentityToken();
     
-    // Check if Firebase is configured (mock if not)
-    if (!auth || !auth.app || auth.app.options.apiKey === "YOUR_API_KEY") {
-      console.warn('[Background] Firebase not configured properly. Using Mock User from Chrome Identity.');
-      // Mock user info using Chrome Identity API fallback
+    try {
+      // Attempt Firebase Auth
+      if (!auth || !auth.app || auth.app.options.apiKey === "YOUR_API_KEY") {
+        throw new Error("Missing or placeholder Firebase API Key");
+      }
+      
+      const credential = GoogleAuthProvider.credential(null, oauthToken);
+      const userCredential = await signInWithCredential(auth, credential);
+      currentUser = userCredential.user;
+      guestMode = false;
+      
+      await saveUserDataToFirestore(currentUser);
+      
+      console.log('[Background] Login successful:', currentUser.email);
+      return { 
+        success: true, 
+        user: { uid: currentUser.uid, email: currentUser.email, displayName: currentUser.displayName, photoURL: currentUser.photoURL },
+        isGuest: false
+      };
+    } catch (fbError) {
+      console.warn('[Background] Firebase Auth failed or not configured. Using Mock User fallback. Error:', fbError.message);
+      
+      // Fallback: Mock user info using Chrome Identity API
       const mockUser = {
         uid: 'mock-user-123',
         email: 'testuser@example.com',
@@ -72,7 +91,6 @@ async function handleLogin() {
         photoURL: ''
       };
       
-      // Try to get real user info from Google APIs using the token
       try {
         const res = await fetch('https://www.googleapis.com/oauth2/v1/userinfo?alt=json&access_token=' + oauthToken);
         const userInfo = await res.json();
@@ -90,31 +108,8 @@ async function handleLogin() {
       guestMode = false;
       return { success: true, user: mockUser, isGuest: false };
     }
-    
-    // 2. Create a Firebase credential with the OAuth token
-    const credential = GoogleAuthProvider.credential(null, oauthToken);
-    
-    // 3. Sign in to Firebase with the credential
-    const userCredential = await signInWithCredential(auth, credential);
-    currentUser = userCredential.user;
-    guestMode = false;
-    
-    // 4. Save/update user data in Firestore
-    await saveUserDataToFirestore(currentUser);
-    
-    console.log('[Background] Login successful:', currentUser.email);
-    return { 
-      success: true, 
-      user: {
-        uid: currentUser.uid,
-        email: currentUser.email,
-        displayName: currentUser.displayName,
-        photoURL: currentUser.photoURL
-      },
-      isGuest: false
-    };
   } catch (error) {
-    console.error('[Background] Login failed:', error);
+    console.error('[Background] Login failed completely:', error);
     guestMode = true;
     return { success: false, isGuest: true, error: error.message };
   }
