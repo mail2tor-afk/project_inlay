@@ -24,44 +24,54 @@ class TranscriptExtractor {
   }
 
   async getTranscriptUrl(videoId) {
-    return new Promise((resolve) => {
-      const messageHandler = (event) => {
-        if (event.source !== window || !event.data || event.data.type !== 'FC_YOUTUBE_DATA') return;
-        window.removeEventListener('message', messageHandler);
+    try {
+      const response = await fetch('https://www.youtube.com/watch?v=' + videoId);
+      const html = await response.text();
+      
+      const startStr = '"captions":{';
+      const startIndex = html.indexOf(startStr);
+      if (startIndex === -1) {
+        this.sendLogToBackend('warn', 'No captions block found in HTML');
+        return null;
+      }
+      
+      let braceCount = 0;
+      let jsonStr = '';
+      let started = false;
+      
+      // Start at the opening brace of {"playerCaptionsTracklistRenderer":...
+      for (let i = startIndex + 11; i < html.length; i++) {
+        const char = html[i];
+        jsonStr += char;
         
-        const data = event.data.payload;
-        if (data && data.captions && data.captions.playerCaptionsTracklistRenderer) {
-          const tracks = data.captions.playerCaptionsTracklistRenderer.captionTracks;
-          if (tracks && tracks.length > 0) {
-            const track = tracks.find(t => t.languageCode === 'en' || t.languageCode === 'th') || tracks[0];
-            resolve(track.baseUrl);
-            return;
-          }
+        if (char === '{') {
+          started = true;
+          braceCount++;
+        } else if (char === '}') {
+          braceCount--;
         }
-        resolve(null);
-      };
+        
+        if (started && braceCount === 0) {
+          break; // Found the matching closing brace
+        }
+      }
       
-      window.addEventListener('message', messageHandler);
+      try {
+        const parsed = JSON.parse(jsonStr);
+        if (parsed.playerCaptionsTracklistRenderer && parsed.playerCaptionsTracklistRenderer.captionTracks) {
+          const tracks = parsed.playerCaptionsTracklistRenderer.captionTracks;
+          const track = tracks.find(t => t.languageCode === 'en' || t.languageCode === 'th') || tracks[0];
+          if (track) return track.baseUrl;
+        }
+      } catch (e) {
+        this.sendLogToBackend('error', 'Failed to parse captions JSON', { error: e.toString() });
+      }
       
-      // Inject script to main world to read ytInitialPlayerResponse (bypassing isolated world)
-      const script = document.createElement('script');
-      script.textContent = `
-        try {
-          window.postMessage({
-            type: 'FC_YOUTUBE_DATA',
-            payload: window.ytInitialPlayerResponse || null
-          }, '*');
-        } catch(e) {}
-      `;
-      document.documentElement.appendChild(script);
-      script.remove();
-      
-      // Timeout fallback
-      setTimeout(() => {
-        window.removeEventListener('message', messageHandler);
-        resolve(null);
-      }, 3000);
-    });
+      return null;
+    } catch (error) {
+      this.sendLogToBackend('error', 'Failed to fetch YouTube HTML', { error: error.toString() });
+      return null;
+    }
   }
 
   async fetchTranscript(url) {
