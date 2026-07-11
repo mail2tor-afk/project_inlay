@@ -32,6 +32,58 @@
   let currentStreamingItem = null;
   let textBuffer = "";
 
+  const userVotes = {}; // local vote state tracking
+
+  function formatRelativeTime(timestamp) {
+    const diffMs = Date.now() - timestamp;
+    const diffSecs = Math.floor(diffMs / 1000);
+    const diffMins = Math.floor(diffSecs / 60);
+
+    if (diffSecs < 10) return 'เมื่อสักครู่';
+    if (diffSecs < 60) return `เมื่อ ${diffSecs} วินาทีที่แล้ว`;
+    return `เมื่อ ${diffMins} นาทีที่แล้ว`;
+  }
+
+  function handleVoteClick(factCheckId, voteType) {
+    if (userVotes[factCheckId]) return; // Prevent double voting
+
+    userVotes[factCheckId] = voteType;
+    
+    // Toggle active state classes on card buttons
+    const card = document.getElementById(factCheckId);
+    if (card) {
+      if (voteType === 'like') {
+        const btn = card.querySelector('.fc-vote-like');
+        if (btn) btn.classList.add('fc-voted-like');
+      } else {
+        const btn = card.querySelector('.fc-vote-dislike');
+        if (btn) btn.classList.add('fc-voted-dislike');
+      }
+    }
+
+    if (window.FactCheckOverlay.socket) {
+      const urlParams = new URLSearchParams(window.location.search);
+      const videoId = urlParams.get('v');
+      window.FactCheckOverlay.socket.emit('vote_factcheck', {
+        factCheckId,
+        voteType,
+        videoId
+      });
+    }
+  }
+
+  function updateCardTimestamps() {
+    document.querySelectorAll('.fc-card-time').forEach(el => {
+      const createdAt = parseInt(el.getAttribute('data-created-at'));
+      if (createdAt) {
+        el.textContent = formatRelativeTime(createdAt);
+      }
+    });
+  }
+
+  // Periodic relative time updater every 10 seconds
+  setInterval(updateCardTimestamps, 10000);
+
   // Color palette for speakers (Border colors and subtle backgrounds)
   const speakerColors = [
     { border: '#3b82f6', bg: 'rgba(59, 130, 246, 0.08)', text: '#3b82f6' }, // Blue
@@ -424,10 +476,10 @@
         background: rgba(255, 255, 255, 0.08);
       }
 
-      .fc-fact-item.fc-verified {
+      .fc-fact-item.fc-fact {
         background: rgba(16, 185, 129, 0.05);
       }
-      .fc-fact-item.fc-verified .fc-fact-label {
+      .fc-fact-item.fc-fact .fc-fact-label {
         color: #10b981;
         background: rgba(16, 185, 129, 0.15);
       }
@@ -461,6 +513,73 @@
         line-height: 1.6;
         color: #e2e8f0;
         white-space: pre-line; /* Supports paragraphs and newlines */
+      }
+
+      /* Card Header Actions & Timestamp */
+      .fc-fact-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .fc-card-time {
+        font-size: 10px;
+        color: #64748b;
+      }
+
+      .fc-card-close {
+        border: none;
+        background: transparent;
+        color: #64748b;
+        cursor: pointer;
+        font-size: 14px;
+        padding: 0;
+        line-height: 1;
+        transition: color 0.2s;
+      }
+
+      .fc-card-close:hover {
+        color: #ef4444;
+      }
+
+      /* Card Vote Bar */
+      .fc-card-votes {
+        display: flex;
+        gap: 12px;
+        margin-top: 10px;
+        padding-top: 8px;
+        border-top: 1px solid rgba(255, 255, 255, 0.04);
+      }
+
+      .fc-vote-btn {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 4px;
+        color: #94a3b8;
+        padding: 2px 8px;
+        font-size: 11px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        transition: all 0.2s;
+      }
+
+      .fc-vote-btn:hover {
+        background: rgba(255, 255, 255, 0.1);
+        color: #f1f5f9;
+      }
+
+      .fc-vote-btn.fc-voted-like {
+        background: rgba(16, 185, 129, 0.12);
+        border-color: #10b981;
+        color: #10b981;
+      }
+
+      .fc-vote-btn.fc-voted-dislike {
+        background: rgba(239, 68, 68, 0.12);
+        border-color: #ef4444;
+        color: #ef4444;
       }
 
       .fc-fact-source {
@@ -835,11 +954,27 @@
       if (!contentDiv) return;
 
       contentDiv.style.display = 'block';
-      document.querySelector('.fc-loading').style.display = 'none';
+      const loadingDiv = document.querySelector('.fc-loading');
+      if (loadingDiv) loadingDiv.style.display = 'none';
+
+      const factCheckId = data.factCheckId || `fc_${Date.now()}`;
+      
+      // If card already exists (from real-time updates), update its votes and exit
+      let existingCard = document.getElementById(factCheckId);
+      if (existingCard) {
+        const likeCountEl = existingCard.querySelector('.fc-like-count');
+        const dislikeCountEl = existingCard.querySelector('.fc-dislike-count');
+        if (likeCountEl && data.likes !== undefined) likeCountEl.textContent = data.likes;
+        if (dislikeCountEl && data.dislikes !== undefined) dislikeCountEl.textContent = data.dislikes;
+        return;
+      }
 
       const factItem = document.createElement('div');
+      factItem.id = factCheckId;
+      
       let verdictClass = (data.verdict || 'neutral').toLowerCase();
-      if (verdictClass === 'context_needed') verdictClass = 'neutral';
+      // Normalize verdict names
+      if (verdictClass === 'verified') verdictClass = 'fact';
       
       factItem.className = `fc-fact-item fc-${verdictClass}`;
       
@@ -848,24 +983,59 @@
       factItem.style.setProperty('--speaker-bg', spkColor.bg);
 
       const labelMap = {
-        verified: '✅ VERIFIED',
-        false: '❌ FALSE',
-        misleading: '⚠️ MISLEADING',
-        neutral: 'ℹ️ CONTEXT',
-        context_needed: 'ℹ️ CONTEXT'
+        fact: 'จริง',
+        false: 'เท็จ',
+        misleading: 'บิดเบือน',
+        neutral: 'ข้อมูลเสริม'
       };
+
+      const creationTime = data.timestamp || Date.now();
+      const relativeTimeStr = formatRelativeTime(creationTime);
 
       factItem.innerHTML = `
         <div class="fc-fact-header">
           <span class="fc-fact-speaker" style="color: ${spkColor.border}">${data.speaker || 'Unknown'}</span>
-          <span class="fc-fact-label">${labelMap[verdictClass] || labelMap.neutral}</span>
+          <div class="fc-fact-actions">
+            <span class="fc-card-time" data-created-at="${creationTime}">${relativeTimeStr}</span>
+            <span class="fc-fact-label">${labelMap[verdictClass] || labelMap.neutral}</span>
+            <button class="fc-card-close" title="Close">×</button>
+          </div>
         </div>
         <div class="fc-fact-text">${data.text}</div>
-        ${data.source ? `<div class="fc-fact-source">Source: ${data.source}</div>` : ''}
+        
+        <!-- Like/Dislike Vote Bar -->
+        <div class="fc-card-votes">
+          <button class="fc-vote-btn fc-vote-like" data-id="${factCheckId}">
+            👍 <span class="fc-like-count">${data.likes || 0}</span>
+          </button>
+          <button class="fc-vote-btn fc-vote-dislike" data-id="${factCheckId}">
+            👎 <span class="fc-dislike-count">${data.dislikes || 0}</span>
+          </button>
+        </div>
       `;
 
-      contentDiv.appendChild(factItem);
-      contentDiv.scrollTop = contentDiv.scrollHeight;
+      // Set up click listener for close button
+      factItem.querySelector('.fc-card-close').addEventListener('click', () => {
+        factItem.remove();
+      });
+
+      // Set up click listeners for Like/Dislike buttons
+      const likeBtn = factItem.querySelector('.fc-vote-like');
+      const dislikeBtn = factItem.querySelector('.fc-vote-dislike');
+
+      likeBtn.addEventListener('click', () => handleVoteClick(factCheckId, 'like'));
+      dislikeBtn.addEventListener('click', () => handleVoteClick(factCheckId, 'dislike'));
+
+      // If user has already voted, apply CSS state
+      if (userVotes[factCheckId] === 'like') likeBtn.classList.add('fc-voted-like');
+      if (userVotes[factCheckId] === 'dislike') dislikeBtn.classList.add('fc-voted-dislike');
+
+      // Prepend at the top (newest first!)
+      if (contentDiv.firstChild) {
+        contentDiv.insertBefore(factItem, contentDiv.firstChild);
+      } else {
+        contentDiv.appendChild(factItem);
+      }
     },
     updateStatus: (text) => {
       const statusText = document.querySelector('.fc-status-text');
@@ -981,38 +1151,54 @@
     socket.on('connect', () => {
       console.log('[Fact-Check Overlay] Connected to Backend');
       window.FactCheckOverlay.updateStatus(state.isPaused ? 'Analysis Paused' : 'Connected to Backend');
+      window.FactCheckOverlay.socket = socket; // Expose socket to global IIFE scope for voting
       
-      const urlParams = new URLSearchParams(window.location.search);
-      let videoId = urlParams.get('v');
-      
-      if (videoId) {
-        socket.emit('join_video', videoId);
-        
-        // Start sending time updates every 1 second
-        timeUpdateInterval = setInterval(() => {
-          if (state.isPaused) return;
-
-          const videoElement = document.querySelector('video');
-          if (videoElement && videoElement.currentTime > 0) {
-            const currentUrlParams = new URLSearchParams(window.location.search);
-            const currentVideoId = currentUrlParams.get('v');
-            
-            if (currentVideoId && currentVideoId !== videoId) {
-              socket.emit('leave_video', videoId);
-              videoId = currentVideoId;
-              socket.emit('join_video', videoId);
-              
-              // Reset the UI overlays and clear old cards
-              window.FactCheckOverlay.resetUI();
+      function emitJoinVideo() {
+        const urlParams = new URLSearchParams(window.location.search);
+        let videoId = urlParams.get('v');
+        if (videoId) {
+          // Robust DOM extraction of video meta info
+          const videoTitle = document.querySelector('h1.ytd-watch-metadata yt-formatted-string')?.textContent || document.title;
+          const channelName = document.querySelector('#owner ytd-channel-name a')?.textContent || document.querySelector('ytd-channel-name')?.textContent || '';
+          
+          socket.emit('join_video', {
+            videoId: videoId,
+            metadata: {
+              title: videoTitle.trim(),
+              channel: channelName.trim()
             }
-            
-            socket.emit('video_time_update', {
-              videoId: videoId,
-              currentTime: videoElement.currentTime
-            });
-          }
-        }, 1000);
+          });
+        }
       }
+
+      emitJoinVideo();
+      
+      // Start sending time updates every 1 second
+      timeUpdateInterval = setInterval(() => {
+        if (state.isPaused) return;
+
+        const videoElement = document.querySelector('video');
+        if (videoElement && videoElement.currentTime > 0) {
+          const currentUrlParams = new URLSearchParams(window.location.search);
+          const currentVideoId = currentUrlParams.get('v');
+          const urlParams = new URLSearchParams(window.location.search);
+          let videoId = urlParams.get('v');
+          
+          if (currentVideoId && currentVideoId !== videoId) {
+            socket.emit('leave_video', videoId);
+            // Reset the UI overlays and clear old cards
+            window.FactCheckOverlay.resetUI();
+            
+            // Re-emit join with the new video meta
+            emitJoinVideo();
+          }
+          
+          socket.emit('video_time_update', {
+            videoId: currentVideoId,
+            currentTime: videoElement.currentTime
+          });
+        }
+      }, 1000);
     });
 
     socket.on('disconnect', () => {
@@ -1023,8 +1209,27 @@
       }
     });
 
+    // Handle updates to vote counts
+    socket.on('vote_update', ({ factCheckId, likes, dislikes }) => {
+      const card = document.getElementById(factCheckId);
+      if (card) {
+        const likeCountEl = card.querySelector('.fc-like-count');
+        const dislikeCountEl = card.querySelector('.fc-dislike-count');
+        if (likeCountEl) likeCountEl.textContent = likes;
+        if (dislikeCountEl) dislikeCountEl.textContent = dislikes;
+      }
+    });
+
+    // Handle auto-disabled status due to skipped categories
+    socket.on('factcheck_disabled', ({ reason }) => {
+      window.FactCheckOverlay.updateStatus('Disabled');
+      const loadingDiv = document.querySelector('.fc-loading');
+      if (loadingDiv) {
+        loadingDiv.innerHTML = `<p style="color: #94a3b8; font-size: 13px; padding: 20px;">${reason}</p>`;
+      }
+    });
+
     // Handle incoming fact check streaming (uses IIFE-scope currentStreamingItem and textBuffer)
-    
     socket.on('factcheck_update', (data) => {
       if (data.type === 'chunk') {
         textBuffer = data.text;
@@ -1057,13 +1262,19 @@
         if (parsed.analysis) {
           if (!currentStreamingItem) {
             currentStreamingItem = document.createElement('div');
-            contentDiv.appendChild(currentStreamingItem);
+            currentStreamingItem.id = data.factCheckId;
+            
+            // Prepend new item to the top of the content list
+            if (contentDiv.firstChild) {
+              contentDiv.insertBefore(currentStreamingItem, contentDiv.firstChild);
+            } else {
+              contentDiv.appendChild(currentStreamingItem);
+            }
           }
 
           // Apply verdict class and colors
           let verdictClass = (parsed.verdict || 'neutral').toLowerCase();
-          if (verdictClass === 'context_needed') verdictClass = 'neutral';
-          
+          if (verdictClass === 'verified') verdictClass = 'fact';
           currentStreamingItem.className = `fc-fact-item fc-${verdictClass}`;
           
           const spkColor = getSpeakerColor(parsed.speaker);
@@ -1071,38 +1282,53 @@
           currentStreamingItem.style.setProperty('--speaker-bg', spkColor.bg);
 
           const labelMap = {
-            verified: '✅ VERIFIED',
-            false: '❌ FALSE',
-            misleading: '⚠️ MISLEADING',
-            neutral: 'ℹ️ CONTEXT',
-            context_needed: 'ℹ️ CONTEXT'
+            fact: 'จริง',
+            false: 'เท็จ',
+            misleading: 'บิดเบือน',
+            neutral: 'ข้อมูลเสริม'
           };
+
+          const creationTime = data.timestamp || Date.now();
+          const relativeTimeStr = formatRelativeTime(creationTime);
 
           currentStreamingItem.innerHTML = `
             <div class="fc-fact-header">
               <span class="fc-fact-speaker" style="color: ${spkColor.border}">${parsed.speaker || 'Unknown'}</span>
-              <span class="fc-fact-label">${labelMap[verdictClass] || labelMap.neutral}</span>
+              <div class="fc-fact-actions">
+                <span class="fc-card-time" data-created-at="${creationTime}">${relativeTimeStr}</span>
+                <span class="fc-fact-label">${labelMap[verdictClass] || labelMap.neutral}</span>
+                <button class="fc-card-close" title="Close">×</button>
+              </div>
             </div>
             <div class="fc-fact-text">${parsed.analysis}</div>
           `;
           
-          contentDiv.scrollTop = contentDiv.scrollHeight;
+          // Click listener for close button
+          currentStreamingItem.querySelector('.fc-card-close').addEventListener('click', () => {
+            currentStreamingItem.remove();
+          });
         }
       } 
       else if (data.type === 'done') {
         const parsed = parseTaggedResponse(data.text);
         if (parsed.analysis) {
+          const factCheckId = data.factCheckId || `fc_${Date.now()}`;
+          
           if (!currentStreamingItem) {
             window.FactCheckOverlay.addFactCheck({
               verdict: parsed.verdict || 'neutral',
               speaker: parsed.speaker || 'Unknown',
               text: parsed.analysis,
-              source: 'AI Analysis'
+              factCheckId: factCheckId,
+              likes: data.likes || 0,
+              dislikes: data.dislikes || 0,
+              timestamp: data.timestamp || Date.now()
             });
           } else {
             // Finalize current card styling and reset buffer references
+            currentStreamingItem.id = factCheckId;
             let verdictClass = (parsed.verdict || 'neutral').toLowerCase();
-            if (verdictClass === 'context_needed') verdictClass = 'neutral';
+            if (verdictClass === 'verified') verdictClass = 'fact';
             
             currentStreamingItem.className = `fc-fact-item fc-${verdictClass}`;
             
@@ -1111,21 +1337,51 @@
             currentStreamingItem.style.setProperty('--speaker-bg', spkColor.bg);
 
             const labelMap = {
-              verified: '✅ VERIFIED',
-              false: '❌ FALSE',
-              misleading: '⚠️ MISLEADING',
-              neutral: 'ℹ️ CONTEXT',
-              context_needed: 'ℹ️ CONTEXT'
+              fact: 'จริง',
+              false: 'เท็จ',
+              misleading: 'บิดเบือน',
+              neutral: 'ข้อมูลเสริม'
             };
+
+            const creationTime = data.timestamp || Date.now();
+            const relativeTimeStr = formatRelativeTime(creationTime);
 
             currentStreamingItem.innerHTML = `
               <div class="fc-fact-header">
                 <span class="fc-fact-speaker" style="color: ${spkColor.border}">${parsed.speaker || 'Unknown'}</span>
-                <span class="fc-fact-label">${labelMap[verdictClass] || labelMap.neutral}</span>
+                <div class="fc-fact-actions">
+                  <span class="fc-card-time" data-created-at="${creationTime}">${relativeTimeStr}</span>
+                  <span class="fc-fact-label">${labelMap[verdictClass] || labelMap.neutral}</span>
+                  <button class="fc-card-close" title="Close">×</button>
+                </div>
               </div>
               <div class="fc-fact-text">${parsed.analysis}</div>
-              <div class="fc-fact-source">Source: AI Analysis</div>
+              
+              <!-- Like/Dislike Vote Bar -->
+              <div class="fc-card-votes">
+                <button class="fc-vote-btn fc-vote-like" data-id="${factCheckId}">
+                  👍 <span class="fc-like-count">${data.likes || 0}</span>
+                </button>
+                <button class="fc-vote-btn fc-vote-dislike" data-id="${factCheckId}">
+                  👎 <span class="fc-dislike-count">${data.dislikes || 0}</span>
+                </button>
+              </div>
             `;
+            
+            // Set up click listener for close button
+            currentStreamingItem.querySelector('.fc-card-close').addEventListener('click', () => {
+              currentStreamingItem.remove();
+            });
+
+            // Set up click listeners for Like/Dislike buttons
+            const likeBtn = currentStreamingItem.querySelector('.fc-vote-like');
+            const dislikeBtn = currentStreamingItem.querySelector('.fc-vote-dislike');
+
+            likeBtn.addEventListener('click', () => handleVoteClick(factCheckId, 'like'));
+            dislikeBtn.addEventListener('click', () => handleVoteClick(factCheckId, 'dislike'));
+
+            if (userVotes[factCheckId] === 'like') likeBtn.classList.add('fc-voted-like');
+            if (userVotes[factCheckId] === 'dislike') dislikeBtn.classList.add('fc-voted-dislike');
             
             currentStreamingItem = null;
             textBuffer = "";

@@ -17,21 +17,34 @@ export const initLLM = () => {
 };
 
 const FACT_CHECK_PROMPT = `
-You are an expert real-time fact-checker for video content. Analyze the following transcript chunk.
+คุณคือผู้เชี่ยวชาญการตรวจสอบข้อเท็จจริง (Fact-checker) ประจำวิดีโออย่างเข้มงวด
 
-Your job:
-1. Identify the speaker if there are verbal cues or dialog cues in the transcript. If not possible to determine, use a generic label like "ผู้ดำเนินรายการ" or "ผู้พูด".
-2. Determine the core topic being discussed in this chunk (max 5 words).
-3. Evaluate the factual accuracy of any statements:
-   - If a claim is FALSE or MISLEADING, verdict is "FALSE" or "MISLEADING".
-   - If a claim is accurate but there is a CRITICAL piece of missing context required to prevent major misunderstanding, verdict is "CONTEXT_NEEDED".
-   - If the statements are accurate, standard opinions, greetings, filler, or do not contain any major factual claims that require correction, you must respond with exactly "SKIP" (no other text).
+หลักการเขียน Fact-check (ปฏิบัติตามอย่างเคร่งครัด):
+1. ตัดความคิดเห็นส่วนตัวออกทั้งหมด (Objectivity & Nonpartisanship): การเขียนต้องไม่มีอารมณ์ ความรู้สึก หรือการตัดสินคุณค่าใดๆ เจือปน ต้องนำเสนอเฉพาะสิ่งที่หลักฐานเชิงประจักษ์ระบุไว้เท่านั้น
+2. เน้นความชัดเจนและกระชับ (Clarity & Succinctness): ควรอธิบายด้วยประโยคสั้นๆ ตรงไปตรงมา ไม่อ้อมค้อม หากต้องใช้คำศัพท์เฉพาะทาง ควรมีคำอธิบายสั้นๆ ที่เข้าใจง่าย
+3. ให้บริบทที่ตรงจุด (Provide Exact Context): หากข้อมูลคลุมเครือหรือบิดเบือน การเขียนแก้ต้องระบุให้ชัดเจนว่า ขาดอะไรไป เช่น ใครทำอะไร ที่ไหน เมื่อไหร่ เพื่อป้องกันการเข้าใจผิดจากการนำเหตุการณ์เก่ามาเล่าซ้ำหรือตัดต่อภาพ
+4. ระบุแหล่งอ้างอิงเสมอ (Transparency): ต้องโปร่งใสเรื่องแหล่งที่มาของข้อมูลที่ใช้แย้งเสมอ
 
-You must output your response in this EXACT tagged structure (do not include markdown code block formatting, just the raw text):
-[TOPIC: <brief topic name>]
-[SPEAKER: <speaker name>]
-[VERDICT: <FALSE | MISLEADING | CONTEXT_NEEDED>]
-[ANALYSIS: <concise 2-3 sentences fact-check or context addition explaining the correction, in the same language as the transcript>]
+ลักษณะประโยคที่มักใช้ในงาน Fact-check:
+ประโยคที่ดีจะขึ้นต้นด้วย "ข้อเท็จจริง" หรือ "ข้อสรุป" ทันที โดยไม่ต้องมีคำเกริ่นนำลักษณะ "ข้อมูลดังกล่าวขาดความชัดเจนเนื่องจาก..." 
+
+ตัวอย่างประโยคมาตรฐาน:
+- กรณีเป็น "เท็จ" (FALSE):
+  "ภาพนี้ไม่ใช่เหตุการณ์ที่เชียงใหม่ แต่เป็นภาพเหตุการณ์ประท้วงที่กรุงเทพฯ เมื่อปี 2563 (อ้างอิง: ...)"
+  "บุคคลในคลิปไม่ได้กล่าวประโยคดังกล่าว ข้อความต้นฉบับคือ..."
+- กรณี "บิดเบือน" (MISLEADING):
+  "ข้อความนี้ถูกตัดตอน บริบทฉบับเต็มคือการพูดถึงนโยบายเศรษฐกิจ ไม่ใช่การสั่งการทางการทหาร"
+  "ตัวเลขสถิตินี้เป็นความจริง แต่เป็นข้อมูลของปี 2560 ไม่ใช่ข้อมูลปัจจุบัน"
+
+หน้าที่ของคุณ:
+1. ตรวจสอบคลิปนี้ หากข้อมูลถูกต้องทั้งหมด ไม่มีข้อมูลที่เข้าข่าย "เท็จ" หรือ "บิดเบือน" หรือข้อมูลที่สลักสำคัญใดๆ ที่ต้องทำการแก้ไข ให้ตอบเพียงคำเดียวว่า "SKIP" เท่านั้น
+2. หากมีข้อมูลที่เป็น เท็จ (FALSE), บิดเบือน (MISLEADING), หรือข้อมูลที่เป็นความจริงที่สลักสำคัญที่ต้องการยืนยันความถูกต้อง (FACT) ให้สรุปสั้นๆ ฟันธงตรงๆ ว่า จริง เท็จ หรือ บิดเบือน และบอกความจริงคืออะไร
+
+คุณต้องแสดงผลลัพธ์ในรูปแบบ Tag ดังนี้เท่านั้น (ห้ามมี Markdown Code block หรือคำอื่นเกริ่นนำ):
+[TOPIC: <หัวข้อสั้นๆ ไม่เกิน 5 คำ>]
+[SPEAKER: <ชื่อคนพูด>]
+[VERDICT: <FACT | FALSE | MISLEADING>]
+[ANALYSIS: <ฟันธงสั้นๆ และบอกความจริงกระชับ 2 ประโยคตามหลักเกณฑ์ด้านบน>]
 
 Context from database:
 {CONTEXT}
@@ -83,6 +96,7 @@ export const streamFactCheck = async (videoId, transcriptChunk, ragContext = '')
     
     let fullText = "";
     let shouldStream = null; // null = undecided, true = stream, false = discard/skip
+    const factCheckId = `fc_${videoId}_${Date.now()}`;
     
     for await (const chunk of result.stream) {
       const chunkText = chunk.text();
@@ -100,13 +114,14 @@ export const streamFactCheck = async (videoId, transcriptChunk, ragContext = '')
           const verdictMatch = fullText.match(/\[VERDICT:\s*([^\]]*?)\]/i);
           if (verdictMatch) {
             const verdict = verdictMatch[1].trim().toUpperCase();
-            if (verdict === 'FALSE' || verdict === 'MISLEADING' || verdict === 'CONTEXT_NEEDED') {
+            if (verdict === 'FACT' || verdict === 'FALSE' || verdict === 'MISLEADING') {
               shouldStream = true;
               console.log(`[LLM] Verdict is ${verdict} - starting stream for ${videoId}`);
               // Send the initial buffered text up to this point
               await publish(channelName, { 
                 type: 'chunk', 
-                text: fullText 
+                text: fullText,
+                factCheckId: factCheckId
               });
             } else {
               shouldStream = false;
@@ -118,7 +133,8 @@ export const streamFactCheck = async (videoId, transcriptChunk, ragContext = '')
         // Broadcast the accumulated text to the client
         await publish(channelName, { 
           type: 'chunk', 
-          text: fullText 
+          text: fullText,
+          factCheckId: factCheckId
         });
       }
     }
@@ -127,7 +143,11 @@ export const streamFactCheck = async (videoId, transcriptChunk, ragContext = '')
     
     if (shouldStream === true) {
       // Broadcast completion
-      await publish(channelName, { type: 'done', text: fullText.trim() });
+      await publish(channelName, { 
+        type: 'done', 
+        text: fullText.trim(),
+        factCheckId: factCheckId
+      });
       return fullText.trim();
     } else {
       await publish(channelName, { type: 'cancel' });

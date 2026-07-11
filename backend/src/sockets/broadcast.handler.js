@@ -3,24 +3,65 @@ import { handleTimeUpdate, removeClient } from '../services/transcript.service.j
 
 const activeSubscriptions = new Set();
 
+// In-memory vote database for factcheck cards
+const voteRegistry = {};
+
+function shouldSkipVideoBasedOnMetadata(metadata) {
+  if (!metadata) return false;
+  const title = (metadata.title || '').toLowerCase();
+  const channel = (metadata.channel || '').toLowerCase();
+  
+  // Keywords indicating categories that do not need factual analysis (entertainment, vlogs, gaming, music)
+  const skipKeywords = [
+    'asmr', 'gameplay', 'lets play', 'gaming', 'minecraft', 'roblox', 'music video', 
+    'official audio', 'song', 'karaoke', 'cooking recipe', 'make up', 'vlog', 'daily vlog',
+    'mukbang', 'unboxing', 'pubg', 'gta', 'fifa', 'cover song', 'relaxing music'
+  ];
+  
+  return skipKeywords.some(keyword => title.includes(keyword) || channel.includes(keyword));
+}
+
 export const setupSocketHandlers = (io) => {
   io.on('connection', (socket) => {
     console.log(`[Socket] User connected: ${socket.id}`);
 
     // Join a room for a specific video
-    socket.on('join_video', async (videoId) => {
+    socket.on('join_video', async (data) => {
+      // Handle either string (old format) or object with metadata (new format)
+      const videoId = typeof data === 'string' ? data : data.videoId;
+      const metadata = typeof data === 'object' ? data.metadata : null;
+
       console.log(`[Socket] ${socket.id} joined video: ${videoId}`);
       socket.join(videoId);
+
+      // Check category metadata to see if we should skip fact-checking
+      if (shouldSkipVideoBasedOnMetadata(metadata)) {
+        socket.skipFactChecking = true;
+        console.log(`[Socket] Auto-disabled analysis for ${videoId} (Entertainment/ASMR/Vlog detected)`);
+        socket.emit('factcheck_disabled', { 
+          reason: 'หมวดหมู่คลิปไม่จำเป็นต้องเปิดระบบ Fact-check (เช่น บันเทิง, เกม, เพลง, ASMR)' 
+        });
+      } else {
+        socket.skipFactChecking = false;
+      }
 
       // Latecomer state retrieval
       const stateKey = `state:${videoId}`;
       const previousState = await getState(stateKey);
       
-      if (previousState) {
+      if (previousState && !socket.skipFactChecking) {
         console.log(`[Socket] Sending latecomer state to ${socket.id}`);
+        
+        // Match UUID if present in previous state or extract factCheckId
+        const factCheckId = previousState.factCheckId || `fc_${videoId}_late`;
+        const votes = voteRegistry[factCheckId] || { likes: 0, dislikes: 0 };
+        
         socket.emit('factcheck_update', {
           type: 'done',
           text: previousState.lastFactCheck,
+          factCheckId: factCheckId,
+          likes: votes.likes,
+          dislikes: votes.dislikes,
           isLatecomer: true
         });
       }
@@ -31,11 +72,36 @@ export const setupSocketHandlers = (io) => {
     
     // Receive current video time from extension
     socket.on('video_time_update', (data) => {
+      // If auto-disabled for this socket/video, skip sending updates to transcript service
+      if (socket.skipFactChecking) return;
+
       if (data && data.videoId && typeof data.currentTime === 'number') {
         handleTimeUpdate(socket.id, data.videoId, data.currentTime).catch(err => {
           console.error('[Socket] Error handling time update:', err);
         });
       }
+    });
+
+    // Handle Like/Dislike votes on fact-check cards
+    socket.on('vote_factcheck', ({ factCheckId, voteType, videoId }) => {
+      if (!voteRegistry[factCheckId]) {
+        voteRegistry[factCheckId] = { likes: 0, dislikes: 0 };
+      }
+      
+      if (voteType === 'like') {
+        voteRegistry[factCheckId].likes++;
+      } else if (voteType === 'dislike') {
+        voteRegistry[factCheckId].dislikes++;
+      }
+      
+      console.log(`[Vote] ${factCheckId} updated: likes=${voteRegistry[factCheckId].likes}, dislikes=${voteRegistry[factCheckId].dislikes}`);
+      
+      // Broadcast updated vote counts to all sockets in the video room
+      io.to(videoId).emit('vote_update', {
+        factCheckId,
+        likes: voteRegistry[factCheckId].likes,
+        dislikes: voteRegistry[factCheckId].dislikes
+      });
     });
 
     socket.on('leave_video', (videoId) => {
@@ -61,6 +127,12 @@ const subscribeToRedisChannel = (io, videoId) => {
   
   // When a message comes from Redis Pub/Sub, broadcast it to all sockets in the video room
   subscribe(channelName, (message) => {
+    // Inject current vote counts if type is done/chunk and factCheckId is present
+    if (message.factCheckId) {
+      const votes = voteRegistry[message.factCheckId] || { likes: 0, dislikes: 0 };
+      message.likes = votes.likes;
+      message.dislikes = votes.dislikes;
+    }
     io.to(videoId).emit('factcheck_update', message);
   });
 };
