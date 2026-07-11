@@ -659,8 +659,97 @@
             window.FactCheckOverlay.updateTimer(seconds);
           }
         }, 1000);
+        
+        // Initialize Socket.IO connection
+        initSocketIO();
       }
     }, 500);
+  }
+
+  // ============================================
+  // SOCKET.IO INTEGRATION
+  // ============================================
+  function initSocketIO() {
+    if (typeof io === 'undefined') {
+      console.warn('[Fact-Check Overlay] Socket.IO library not loaded yet.');
+      return;
+    }
+    
+    const socket = io('http://localhost:3000');
+    
+    socket.on('connect', () => {
+      console.log('[Fact-Check Overlay] Connected to Backend');
+      window.FactCheckOverlay.updateStatus('Connected to Backend');
+      
+      const urlParams = new URLSearchParams(window.location.search);
+      const videoId = urlParams.get('v');
+      if (videoId) {
+        socket.emit('join_video', videoId);
+      }
+    });
+
+    socket.on('disconnect', () => {
+      console.log('[Fact-Check Overlay] Disconnected from Backend');
+      window.FactCheckOverlay.updateStatus('Disconnected');
+    });
+
+    // Handle incoming fact check streaming
+    let currentStreamingItem = null;
+    let textBuffer = "";
+    
+    socket.on('factcheck_update', (data) => {
+      if (data.type === 'chunk') {
+        if (!currentStreamingItem) {
+          // Hide loading, show content area
+          const contentDiv = document.querySelector('.fc-fact-checks');
+          if (contentDiv) {
+            contentDiv.style.display = 'block';
+            document.querySelector('.fc-loading').style.display = 'none';
+          }
+          
+          // Create new item for streaming
+          currentStreamingItem = document.createElement('div');
+          currentStreamingItem.className = `fc-fact-item fc-neutral`;
+          currentStreamingItem.innerHTML = `
+            <div class="fc-fact-label fc-fact-neutral">AI FACT-CHECKING...</div>
+            <div class="fc-fact-text"></div>
+          `;
+          contentDiv.appendChild(currentStreamingItem);
+        }
+        // Update text (Typewriter effect driven by chunk)
+        textBuffer = data.text;
+        const textDiv = currentStreamingItem.querySelector('.fc-fact-text');
+        if (textDiv) textDiv.textContent = textBuffer;
+        
+        const contentDiv = document.querySelector('.fc-fact-checks');
+        contentDiv.scrollTop = contentDiv.scrollHeight;
+      } 
+      else if (data.type === 'done') {
+        if (!currentStreamingItem) {
+          // Latecomer or full result at once
+          window.FactCheckOverlay.addFactCheck({
+            verdict: 'neutral',
+            text: data.text,
+            source: 'AI Analysis'
+          });
+        } else {
+          // Finalize streaming item
+          const textDiv = currentStreamingItem.querySelector('.fc-fact-text');
+          if (textDiv) textDiv.textContent = data.text;
+          const labelDiv = currentStreamingItem.querySelector('.fc-fact-label');
+          if (labelDiv) labelDiv.textContent = "✅ COMPLETED";
+          currentStreamingItem = null;
+          textBuffer = "";
+        }
+      }
+      else if (data.type === 'cancel') {
+        if (currentStreamingItem) {
+          currentStreamingItem.remove();
+          currentStreamingItem = null;
+          textBuffer = "";
+        }
+      }
+    });
   }
 
   // Start initialization

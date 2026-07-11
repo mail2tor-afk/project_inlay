@@ -26,7 +26,7 @@
   "content_scripts": [
     {
       "matches": ["https://www.youtube.com/*", "https://youtube.com/*"],
-      "js": ["src/content/overlay.js", "src/content/youtube-transcript.js"],
+      "js": ["src/lib/socket.io.min.js", "src/content/overlay.js", "src/content/youtube-transcript.js"],
       "run_at": "document_idle",
       "all_frames": false
     }

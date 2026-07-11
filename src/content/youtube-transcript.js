@@ -1,35 +1,40 @@
-// YouTube Transcript Extractor
-// Injected into YouTube pages to extract closed captions/transcripts
+// YouTube Transcript Extractor & Chunker
+// Injected into YouTube pages to extract closed captions and send chunks to backend
 
 class TranscriptExtractor {
   constructor() {
     this.currentVideoId = null;
     this.transcriptData = null;
     this.isExtracting = false;
+    
+    // Chunking state
+    this.currentChunk = {
+      text: "",
+      startTime: 0,
+      wordCount: 0
+    };
+    this.lastSentIndex = -1;
+    this.videoElement = null;
+    this.timeUpdateListener = null;
   }
 
-  // Extract video ID from URL
   getVideoId() {
     const urlParams = new URLSearchParams(window.location.search);
     return urlParams.get('v');
   }
 
-  // Get caption track URL from YouTube's internal data
   async getTranscriptUrl(videoId) {
     try {
-      // 1. Try to get it from the ytInitialPlayerResponse variable (if available)
       if (window.ytInitialPlayerResponse && 
           window.ytInitialPlayerResponse.captions && 
           window.ytInitialPlayerResponse.captions.playerCaptionsTracklistRenderer &&
           window.ytInitialPlayerResponse.captions.playerCaptionsTracklistRenderer.captionTracks) {
         
         const tracks = window.ytInitialPlayerResponse.captions.playerCaptionsTracklistRenderer.captionTracks;
-        // Find English or fallback to first available
         const track = tracks.find(t => t.languageCode === 'en' || t.languageCode === 'th') || tracks[0];
         if (track) return track.baseUrl;
       }
 
-      // 2. Fallback: Fetch the video page and parse the ytInitialPlayerResponse from HTML
       const response = await fetch(`https://www.youtube.com/watch?v=${videoId}`);
       const html = await response.text();
       
@@ -37,11 +42,8 @@ class TranscriptExtractor {
       const match = html.match(regex);
       
       if (match && match[1]) {
-        // The regex might capture more than we want, let's try to extract just the valid JSON part
-        // A simple workaround for this specific YouTube structure
         let captionsJson = match[1];
         try {
-           // Try to parse the first match
            const parsed = JSON.parse(captionsJson);
            if (parsed.playerCaptionsTracklistRenderer && parsed.playerCaptionsTracklistRenderer.captionTracks) {
              const tracks = parsed.playerCaptionsTracklistRenderer.captionTracks;
@@ -49,11 +51,9 @@ class TranscriptExtractor {
              if (track) return track.baseUrl;
            }
         } catch (e) {
-           // JSON parse might fail if regex matches too much, this is a basic extraction approach
            console.log('[Transcript] Could not parse captions from HTML block');
         }
       }
-      
       return null;
     } catch (error) {
       console.error('[Transcript] Error finding transcript URL:', error);
@@ -61,7 +61,6 @@ class TranscriptExtractor {
     }
   }
 
-  // Fetch and parse the actual XML transcript
   async fetchTranscript(url) {
     try {
       const response = await fetch(url);
@@ -80,7 +79,6 @@ class TranscriptExtractor {
           text: node.textContent.replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&')
         });
       }
-      
       return transcript;
     } catch (error) {
       console.error('[Transcript] Error fetching/parsing transcript:', error);
@@ -88,23 +86,19 @@ class TranscriptExtractor {
     }
   }
 
-  // Start extraction process
   async extract() {
     const videoId = this.getVideoId();
-    
-    if (!videoId) {
-      return null;
-    }
+    if (!videoId) return null;
     
     if (this.currentVideoId === videoId && this.transcriptData) {
-      return this.transcriptData; // Return cached
+      this.setupVideoListener(); // Ensure listener is attached
+      return this.transcriptData;
     }
     
     this.isExtracting = true;
     console.log(`[Transcript] Extracting for video: ${videoId}`);
     
     const url = await this.getTranscriptUrl(videoId);
-    
     if (!url) {
       console.log('[Transcript] No transcript available for this video');
       this.isExtracting = false;
@@ -112,20 +106,14 @@ class TranscriptExtractor {
     }
     
     const data = await this.fetchTranscript(url);
-    
     if (data) {
       this.currentVideoId = videoId;
       this.transcriptData = data;
+      this.lastSentIndex = -1;
+      this.resetChunk();
       console.log(`[Transcript] Extracted ${data.length} segments`);
       
-      // Send to background script
-      chrome.runtime.sendMessage({
-        action: 'transcriptExtracted',
-        data: {
-          videoId,
-          transcript: data
-        }
-      });
+      this.setupVideoListener();
       
       this.isExtracting = false;
       return data;
@@ -134,25 +122,89 @@ class TranscriptExtractor {
     this.isExtracting = false;
     return null;
   }
+
+  resetChunk() {
+    this.currentChunk = { text: "", startTime: 0, wordCount: 0 };
+  }
+
+  sendChunkToBackend(text, timestamp) {
+    if (!text.trim()) return;
+    
+    console.log(`[Transcript] Sending chunk to backend:`, text);
+    fetch('http://localhost:3000/api/transcript/chunk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        videoId: this.currentVideoId,
+        text: text,
+        timestamp: timestamp
+      })
+    }).catch(err => console.error('[Transcript] Backend fetch error:', err));
+  }
+
+  setupVideoListener() {
+    if (this.timeUpdateListener && this.videoElement) {
+      this.videoElement.removeEventListener('timeupdate', this.timeUpdateListener);
+    }
+
+    this.videoElement = document.querySelector('video');
+    if (!this.videoElement) {
+      // Try again later if video not found
+      setTimeout(() => this.setupVideoListener(), 1000);
+      return;
+    }
+
+    this.timeUpdateListener = () => {
+      if (!this.transcriptData) return;
+      const currentTime = this.videoElement.currentTime;
+
+      // Find the transcript segment for current time
+      // To optimize, we start searching from lastSentIndex
+      let currentIndex = this.lastSentIndex + 1;
+      
+      while (currentIndex < this.transcriptData.length) {
+        const segment = this.transcriptData[currentIndex];
+        
+        // If we haven't reached this segment yet, break
+        if (segment.start > currentTime) break;
+        
+        // Accumulate text
+        if (this.currentChunk.text === "") {
+          this.currentChunk.startTime = segment.start;
+        }
+        
+        this.currentChunk.text += " " + segment.text;
+        this.currentChunk.wordCount += segment.text.split(/\s+/).length;
+        this.lastSentIndex = currentIndex;
+        currentIndex++;
+      }
+
+      // Check chunking limits: 15 seconds elapsed OR 50 words
+      const timeElapsed = currentTime - this.currentChunk.startTime;
+      if (this.currentChunk.text && (timeElapsed >= 15 || this.currentChunk.wordCount >= 50)) {
+        this.sendChunkToBackend(this.currentChunk.text.trim(), currentTime);
+        this.resetChunk();
+      }
+    };
+
+    this.videoElement.addEventListener('timeupdate', this.timeUpdateListener);
+    console.log('[Transcript] Video listener attached for chunking');
+  }
 }
 
-// Initialize and listen for events
 const transcriptExtractor = new TranscriptExtractor();
 
-// YouTube is an SPA, so we need to detect navigation
 let lastUrl = location.href; 
 new MutationObserver(() => {
   const url = location.href;
   if (url !== lastUrl) {
     lastUrl = url;
     if (url.includes('/watch')) {
-      // Small delay to let page settle
       setTimeout(() => transcriptExtractor.extract(), 2000);
     }
   }
 }).observe(document, { subtree: true, childList: true });
 
-// Initial extract if on watch page
 if (location.href.includes('/watch')) {
   setTimeout(() => transcriptExtractor.extract(), 2000);
 }
