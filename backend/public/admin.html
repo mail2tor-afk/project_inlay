@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fact-Check Prompt Editor & Sandbox Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-color: #0b0f19;
+      --panel-bg: rgba(17, 25, 40, 0.65);
+      --panel-border: rgba(255, 255, 255, 0.08);
+      --accent-blue: #3b82f6;
+      --accent-glow: rgba(59, 130, 246, 0.15);
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --font-english: 'Outfit', sans-serif;
+      --font-thai: 'Sarabun', sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.1) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.08) 0px, transparent 50%);
+      color: var(--text-main);
+      font-family: var(--font-thai), var(--font-english);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    /* Glassmorphism Header */
+    header {
+      background: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--panel-border);
+      padding: 16px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-logo {
+      font-size: 24px;
+      background: linear-gradient(135deg, var(--accent-blue), #10b981);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      font-weight: 700;
+      font-family: var(--font-english);
+    }
+
+    .brand-title {
+      font-size: 16px;
+      color: var(--text-muted);
+      font-weight: 400;
+      border-left: 1px solid var(--panel-border);
+      padding-left: 12px;
+    }
+
+    .header-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.2s;
+    }
+
+    .header-links a:hover {
+      color: var(--text-main);
+    }
+
+    /* Layout Main */
+    main {
+      flex: 1;
+      max-width: 1400px;
+      width: 100%;
+      margin: 32px auto;
+      padding: 0 32px;
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 24px;
+    }
+
+    @media (max-width: 1024px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Card Panels */
+    .glass-panel {
+      background: var(--panel-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+      position: relative;
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--panel-border);
+      padding-bottom: 12px;
+    }
+
+    .panel-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Text Editor Area */
+    .editor-wrapper {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+    }
+
+    textarea.prompt-editor {
+      width: 100%;
+      min-height: 480px;
+      background: rgba(8, 12, 21, 0.7);
+      border: 1px solid var(--panel-border);
+      border-radius: 10px;
+      color: #38bdf8;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 14px;
+      line-height: 1.6;
+      padding: 16px;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    textarea.prompt-editor:focus {
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+
+    /* Live Validation List */
+    .validation-panel {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 10px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--panel-border);
+      padding: 12px;
+      border-radius: 8px;
+    }
+
+    .val-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .val-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--text-muted);
+      transition: background-color 0.2s, box-shadow 0.2s;
+    }
+
+    .val-item.valid { color: var(--text-main); }
+    .val-item.valid .val-dot {
+      background: var(--success);
+      box-shadow: 0 0 8px var(--success);
+    }
+
+    .val-item.invalid { color: var(--text-muted); }
+    .val-item.invalid .val-dot {
+      background: var(--danger);
+      box-shadow: 0 0 8px var(--danger);
+    }
+
+    /* Action Buttons */
+    .action-row {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+
+    .btn {
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      outline: none;
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--panel-border);
+      color: var(--text-main);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .btn-primary {
+      background: var(--accent-blue);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background: #2563eb;
+      box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
+    }
+
+    .btn-danger {
+      background: transparent;
+      border: 1px solid var(--danger);
+      color: var(--danger);
+    }
+
+    .btn-danger:hover {
+      background: var(--danger);
+      color: #fff;
+    }
+
+    /* Sandbox Panel Styles */
+    .history-selector-row {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .history-select {
+      background: rgba(8, 12, 21, 0.7);
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      color: var(--text-main);
+      padding: 10px;
+      width: 100%;
+      outline: none;
+      font-size: 13px;
+    }
+
+    .sandbox-fields {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .sandbox-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .sandbox-field label {
+      font-size: 13px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .sandbox-field textarea {
+      background: rgba(8, 12, 21, 0.7);
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      color: var(--text-main);
+      font-size: 13px;
+      line-height: 1.5;
+      padding: 10px;
+      resize: vertical;
+      min-height: 80px;
+      outline: none;
+    }
+
+    .sandbox-field textarea:focus {
+      border-color: var(--accent-blue);
+    }
+
+    /* Test Results console */
+    .result-console {
+      background: #06090e;
+      border: 1px solid var(--panel-border);
+      border-radius: 10px;
+      min-height: 180px;
+      padding: 16px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 13px;
+      color: #e2e8f0;
+      white-space: pre-wrap;
+      overflow-y: auto;
+      max-height: 300px;
+    }
+
+    /* Tags Highlight in Console output */
+    .console-tag {
+      font-weight: bold;
+      color: var(--accent-blue);
+    }
+    .console-verdict-fact {
+      color: var(--success);
+      font-weight: bold;
+    }
+    .console-verdict-false {
+      color: var(--danger);
+      font-weight: bold;
+    }
+    .console-verdict-misleading {
+      color: var(--warning);
+      font-weight: bold;
+    }
+
+    /* Toast Notification */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: rgba(15, 23, 42, 0.9);
+      border-left: 4px solid var(--accent-blue);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      border-radius: 4px;
+      color: var(--text-main);
+      padding: 12px 24px;
+      font-size: 14px;
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      z-index: 1000;
+    }
+
+    .toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    .toast.success { border-left-color: var(--success); }
+    .toast.error { border-left-color: var(--danger); }
+    .toast.warning { border-left-color: var(--warning); }
+
+    /* Loading Spinner */
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-radius: 50%;
+      border-top-color: #fff;
+      animation: spin 1s ease-in-out infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <div class="brand-logo">FactCheck AI</div>
+      <div class="brand-title">Prompt & Sandbox Dashboard (แผงควบคุมหลังบ้าน)</div>
+    </div>
+    <div class="header-links">
+      <a href="/api/factchecks/export" target="_blank">📥 Export History Log</a>
+    </div>
+  </header>
+
+  <main>
+    <!-- Left Panel: Prompt Editor -->
+    <div class="glass-panel">
+      <div class="panel-header">
+        <div class="panel-title">✍️ ปรับแต่ง Prompt วิเคราะห์</div>
+        <div class="action-row" style="margin: 0;">
+          <button class="btn btn-secondary" id="btn-reset-prompt" title="ล้างกลับไปใช้ค่าเริ่มต้น">กู้คืนค่าเริ่มต้น</button>
+        </div>
+      </div>
+
+      <div class="editor-wrapper">
+        <textarea class="prompt-editor" id="prompt-text" placeholder="กำลังโหลด Prompt..."></textarea>
+      </div>
+
+      <!-- Live Validations Checklist -->
+      <div class="validation-panel">
+        <div class="val-item" id="val-transcript">
+          <div class="val-dot"></div>
+          <span>{TRANSCRIPT}</span>
+        </div>
+        <div class="val-item" id="val-context">
+          <div class="val-dot"></div>
+          <span>{CONTEXT}</span>
+        </div>
+        <div class="val-item" id="val-tag-topic">
+          <div class="val-dot"></div>
+          <span>[TOPIC:]</span>
+        </div>
+        <div class="val-item" id="val-tag-speaker">
+          <div class="val-dot"></div>
+          <span>[SPEAKER:]</span>
+        </div>
+        <div class="val-item" id="val-tag-verdict">
+          <div class="val-dot"></div>
+          <span>[VERDICT:]</span>
+        </div>
+        <div class="val-item" id="val-tag-analysis">
+          <div class="val-dot"></div>
+          <span>[ANALYSIS:]</span>
+        </div>
+      </div>
+
+      <div class="action-row">
+        <button class="btn btn-primary" id="btn-save-prompt">💾 บันทึกและเปิดใช้งานจริง</button>
+      </div>
+    </div>
+
+    <!-- Right Panel: Sandbox Tester -->
+    <div class="glass-panel">
+      <div class="panel-header">
+        <div class="panel-title">🔬 ห้องทดลองวิเคราะห์ (Sandbox)</div>
+      </div>
+
+      <!-- History Sample Selector -->
+      <div class="history-selector-row">
+        <label style="font-size: 13px; color: var(--text-muted); font-weight: 500;">เลือกข้อมูลประวัติทดสอบ (History Samples):</label>
+        <select class="history-select" id="sample-select">
+          <option value="">-- กรุณาเลือกประวัติ หรือใส่ข้อมูลทดสอบเอง --</option>
+        </select>
+      </div>
+
+      <!-- Sandbox Fields -->
+      <div class="sandbox-fields">
+        <div class="sandbox-field">
+          <label>RAG Context อ้างอิง (Context):</label>
+          <textarea id="sandbox-context" placeholder="ใส่ประเด็นอ้างอิงอัจฉริยะ (ถ้ามี)..."></textarea>
+        </div>
+        <div class="sandbox-field">
+          <label>ข้อความถอดเสียงต้นทาง (Transcript Chunk):</label>
+          <textarea id="sandbox-transcript" placeholder="ใส่ข้อความคำพูดที่นี่..."></textarea>
+        </div>
+      </div>
+
+      <div class="action-row">
+        <button class="btn btn-primary" id="btn-run-test" style="width: 100%;">
+          ⚡ เริ่มการทดสอบ (Run Sandbox Test)
+        </button>
+      </div>
+
+      <!-- Test Console Output -->
+      <div class="sandbox-field">
+        <label>ผลลัพธ์การประมวลผล (Test Output):</label>
+        <div class="result-console" id="test-output">รอกดทดสอบระบบ...</div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Notification Toast -->
+  <div class="toast" id="toast-el">ข้อความแจ้งเตือน</div>
+
+  <script>
+    let defaultPrompt = '';
+    let currentSavedPrompt = '';
+
+    // Elements
+    const promptTextEl = document.getElementById('prompt-text');
+    const btnSaveEl = document.getElementById('btn-save-prompt');
+    const btnResetEl = document.getElementById('btn-reset-prompt');
+    
+    const sampleSelectEl = document.getElementById('sample-select');
+    const sandboxContextEl = document.getElementById('sandbox-context');
+    const sandboxTranscriptEl = document.getElementById('sandbox-transcript');
+    const btnRunTestEl = document.getElementById('btn-run-test');
+    const testOutputEl = document.getElementById('test-output');
+    const toastEl = document.getElementById('toast-el');
+
+    // Validation Check DOM elements
+    const valTranscript = document.getElementById('val-transcript');
+    const valContext = document.getElementById('val-context');
+    const valTagTopic = document.getElementById('val-tag-topic');
+    const valTagSpeaker = document.getElementById('val-tag-speaker');
+    const valTagVerdict = document.getElementById('val-tag-verdict');
+    const valTagAnalysis = document.getElementById('val-tag-analysis');
+
+    // Fetch Initial Prompt State
+    async function fetchPrompt() {
+      try {
+        const res = await fetch('/api/prompt');
+        const data = await res.json();
+        
+        defaultPrompt = data.defaultPrompt;
+        currentSavedPrompt = data.currentPrompt;
+        
+        promptTextEl.value = currentSavedPrompt;
+        validatePrompt(currentSavedPrompt);
+      } catch (err) {
+        showToast('โหลดข้อมูล Prompt ล้มเหลว', 'error');
+      }
+    }
+
+    // Fetch History Samples
+    async function fetchHistorySamples() {
+      try {
+        const res = await fetch('/api/factchecks/history-samples');
+        const samples = await res.json();
+        
+        // Reset Selector
+        sampleSelectEl.innerHTML = '<option value="">-- กรุณาเลือกประวัติ หรือใส่ข้อมูลทดสอบเอง --</option>';
+        
+        samples.forEach(item => {
+          const date = new Date(item.timestamp).toLocaleTimeString();
+          const cleanText = item.transcript.substring(0, 50) + '...';
+          const option = document.createElement('option');
+          option.value = item.id;
+          option.textContent = `[${date}] ${cleanText}`;
+          option.dataset.transcript = item.transcript;
+          option.dataset.context = item.context || '';
+          sampleSelectEl.appendChild(option);
+        });
+      } catch (err) {
+        console.error('Failed to load history samples:', err);
+      }
+    }
+
+    // Live Validator Logic
+    function validatePrompt(text) {
+      const hasTranscript = text.includes('{TRANSCRIPT}');
+      const hasContext = text.includes('{CONTEXT}');
+      const hasTopic = text.includes('[TOPIC:');
+      const hasSpeaker = text.includes('[SPEAKER:');
+      const hasVerdict = text.includes('[VERDICT:');
+      const hasAnalysis = text.includes('[ANALYSIS:');
+
+      updateValDOM(valTranscript, hasTranscript);
+      updateValDOM(valContext, hasContext);
+      updateValDOM(valTagTopic, hasTopic);
+      updateValDOM(valTagSpeaker, hasSpeaker);
+      updateValDOM(valTagVerdict, hasVerdict);
+      updateValDOM(valTagAnalysis, hasAnalysis);
+
+      return hasTranscript && hasContext && hasTopic && hasSpeaker && hasVerdict && hasAnalysis;
+    }
+
+    function updateValDOM(el, isValid) {
+      if (isValid) {
+        el.classList.add('valid');
+        el.classList.remove('invalid');
+      } else {
+        el.classList.add('invalid');
+        el.classList.remove('valid');
+      }
+    }
+
+    // Show Notification Toast
+    function showToast(message, type = 'success') {
+      toastEl.textContent = message;
+      toastEl.className = 'toast show ' + type;
+      setTimeout(() => {
+        toastEl.className = 'toast';
+      }, 3000);
+    }
+
+    // Format LLM Console Tags
+    function formatConsoleOutput(text) {
+      let formatted = text
+        .replace(/(\[TOPIC:[^\]]*?\])/ig, '<span class="console-tag">$1</span>')
+        .replace(/(\[SPEAKER:[^\]]*?\])/ig, '<span class="console-tag">$1</span>')
+        .replace(/(\[ANALYSIS:[^\]]*?\])/ig, '<span class="console-tag">$1</span>')
+        .replace(/\[VERDICT:\s*(FACT|จริง)\]/ig, '[VERDICT: <span class="console-verdict-fact">FACT</span>]')
+        .replace(/\[VERDICT:\s*(FALSE|เท็จ)\]/ig, '[VERDICT: <span class="console-verdict-false">FALSE</span>]')
+        .replace(/\[VERDICT:\s*(MISLEADING|บิดเบือน)\]/ig, '[VERDICT: <span class="console-verdict-misleading">MISLEADING</span>]');
+      return formatted;
+    }
+
+    // Event Bindings
+    promptTextEl.addEventListener('input', (e) => {
+      validatePrompt(e.target.value);
+    });
+
+    sampleSelectEl.addEventListener('change', (e) => {
+      const selected = e.target.options[e.target.selectedIndex];
+      if (selected && selected.value !== '') {
+        sandboxTranscriptEl.value = selected.dataset.transcript;
+        sandboxContextEl.value = selected.dataset.context;
+      } else {
+        sandboxTranscriptEl.value = '';
+        sandboxContextEl.value = '';
+      }
+    });
+
+    // Save Prompt Configuration
+    btnSaveEl.addEventListener('click', async () => {
+      const currentVal = promptTextEl.value;
+      if (!validatePrompt(currentVal)) {
+        showToast('ไม่สามารถเซฟได้: ขาดรูปแบบแท็กหรือตัวแปรควบคุมที่กำหนด', 'error');
+        return;
+      }
+
+      btnSaveEl.disabled = true;
+      btnSaveEl.innerHTML = '<span class="spinner"></span> กำลังบันทึก...';
+
+      try {
+        const res = await fetch('/api/prompt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: currentVal })
+        });
+        const data = await res.json();
+        
+        if (res.ok) {
+          showToast('บันทึก Prompt และเปิดใช้งานสดเรียบร้อยแล้ว!', 'success');
+          currentSavedPrompt = currentVal;
+        } else {
+          showToast(data.error || 'บันทึกล้มเหลว', 'error');
+        }
+      } catch (err) {
+        showToast('เซิร์ฟเวอร์เกิดข้อผิดพลาด', 'error');
+      } finally {
+        btnSaveEl.disabled = false;
+        btnSaveEl.innerHTML = '💾 บันทึกและเปิดใช้งานจริง';
+      }
+    });
+
+    // Reset default
+    btnResetEl.addEventListener('click', async () => {
+      if (!confirm('คุณต้องการกู้คืน Prompt เริ่มต้นจากผู้พัฒนาหรือไม่? (ค่าปัจจุบันจะถูกล้างออก)')) {
+        return;
+      }
+      
+      try {
+        const res = await fetch('/api/prompt/reset', { method: 'POST' });
+        if (res.ok) {
+          showToast('กู้คืนค่าเริ่มต้นเรียบร้อยแล้ว', 'warning');
+          promptTextEl.value = defaultPrompt;
+          validatePrompt(defaultPrompt);
+        } else {
+          showToast('กู้คืนล้มเหลว', 'error');
+        }
+      } catch (err) {
+        showToast('เซิร์ฟเวอร์เกิดข้อผิดพลาด', 'error');
+      }
+    });
+
+    // Run Sandbox Test
+    btnRunTestEl.addEventListener('click', async () => {
+      const promptVal = promptTextEl.value;
+      const transcriptVal = sandboxTranscriptEl.value.trim();
+      const contextVal = sandboxContextEl.value.trim();
+
+      if (!transcriptVal) {
+        showToast('กรุณากรอกข้อความถอดเสียงสำหรับการทดสอบ', 'warning');
+        return;
+      }
+
+      btnRunTestEl.disabled = true;
+      btnRunTestEl.innerHTML = '<span class="spinner"></span> กำลังประมวลผลวิเคราะห์...';
+      testOutputEl.textContent = 'วิเคราะห์ข้อมูลวิทยากรรมผ่าน Gemini AI...';
+
+      try {
+        const res = await fetch('/api/prompt/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: promptVal,
+            transcript: transcriptVal,
+            context: contextVal
+          })
+        });
+        const data = await res.json();
+        
+        if (res.ok) {
+          testOutputEl.innerHTML = formatConsoleOutput(data.result);
+          showToast('ทดสอบประมวลผลเสร็จสิ้น!', 'success');
+        } else {
+          testOutputEl.textContent = 'Error: ' + data.error;
+          showToast('การรันผลทดสอบล้มเหลว', 'error');
+        }
+      } catch (err) {
+        testOutputEl.textContent = 'Error: เซิร์ฟเวอร์ขัดข้อง';
+        showToast('เซิร์ฟเวอร์เกิดข้อผิดพลาด', 'error');
+      } finally {
+        btnRunTestEl.disabled = false;
+        btnRunTestEl.innerHTML = '⚡ เริ่มการทดสอบ (Run Sandbox Test)';
+      }
+    });
+
+    // Init Page load
+    fetchPrompt();
+    fetchHistorySamples();
+  </script>
+</body>
+</html>

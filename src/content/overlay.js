@@ -166,6 +166,26 @@
             </label>
           </div>
         </div>
+        <div class="fc-setting-row" style="margin-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 10px;">
+          <button class="fc-btn-export-history" id="fc-btn-export" style="
+            width: 100%;
+            padding: 8px;
+            background: #2563eb;
+            color: #ffffff;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 12px;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+          ">
+            📥 ส่งออกประวัติ Factcheck (Export JSON)
+          </button>
+        </div>
       </div>
 
       <!-- Current Topic Sticky Header -->
@@ -805,6 +825,15 @@
         state.showMisleading = e.target.checked;
         applyFilters();
         saveState();
+      });
+    }
+
+    // Export button click handler
+    const exportBtn = overlay.querySelector('#fc-btn-export');
+    if (exportBtn) {
+      exportBtn.addEventListener('click', () => {
+        console.log('[UI] Exporting factchecks history...');
+        window.open('http://localhost:3000/api/factchecks/export', '_blank');
       });
     }
 
