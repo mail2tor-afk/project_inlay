@@ -76,25 +76,37 @@ class TranscriptExtractor {
 
   async fetchTranscript(url) {
     try {
-      const response = await fetch(url);
-      const xmlString = await response.text();
+      // Force JSON3 format to avoid XML parsing issues if YouTube defaults to something else
+      const fetchUrl = url + (url.includes('?') ? '&' : '?') + 'fmt=json3';
+      this.sendLogToBackend('info', 'Fetching transcript URL', { fetchUrl });
       
-      const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(xmlString, "text/xml");
-      const textNodes = xmlDoc.getElementsByTagName("text");
+      const response = await fetch(fetchUrl);
+      const textResponse = await response.text();
+      
+      this.sendLogToBackend('info', 'Raw response sample', { sample: textResponse.substring(0, 150) });
+      
+      const parsed = JSON.parse(textResponse);
+      if (!parsed.events) {
+        this.sendLogToBackend('error', 'No events in JSON3 transcript');
+        return [];
+      }
       
       const transcript = [];
-      for (let i = 0; i < textNodes.length; i++) {
-        const node = textNodes[i];
-        transcript.push({
-          start: parseFloat(node.getAttribute("start")),
-          duration: parseFloat(node.getAttribute("dur") || 0),
-          text: node.textContent.replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&')
-        });
+      for (const event of parsed.events) {
+        if (event.segs && event.segs.length > 0) {
+          const text = event.segs.map(s => s.utf8).join('').replace(/\n/g, ' ');
+          if (text.trim() !== '') {
+            transcript.push({
+              start: (event.tStartMs / 1000) || 0,
+              duration: (event.dDurationMs / 1000) || 0,
+              text: text
+            });
+          }
+        }
       }
       return transcript;
     } catch (error) {
-      console.error('[Transcript] Error fetching/parsing transcript:', error);
+      this.sendLogToBackend('error', 'Error fetching/parsing transcript', { error: error.toString() });
       return null;
     }
   }
