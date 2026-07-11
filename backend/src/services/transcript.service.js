@@ -97,10 +97,8 @@ export const removeClient = (socketId) => {
 function extractTextRange(transcript, startTime, endTime) {
   let text = '';
   for (const seg of transcript) {
-    // youtube-transcript returns offset in milliseconds usually, but it depends on the video.
-    // Generally it's milliseconds (e.g. 15000 for 15s).
-    // Let's normalize to seconds.
-    const segStartTime = seg.offset > 100000 || seg.offset > 5000 ? seg.offset / 1000 : seg.offset; 
+    // youtube-transcript always returns offset in milliseconds.
+    const segStartTime = seg.offset / 1000; 
     
     // We want segments that overlap with our window
     if (segStartTime >= startTime && segStartTime <= endTime) {
