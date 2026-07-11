@@ -29,6 +29,9 @@
     resizeStart: { width: 0, height: 0, x: 0, y: 0 }
   };
 
+  let currentStreamingItem = null;
+  let textBuffer = "";
+
   // Color palette for speakers (Border colors and subtle backgrounds)
   const speakerColors = [
     { border: '#3b82f6', bg: 'rgba(59, 130, 246, 0.08)', text: '#3b82f6' }, // Blue
@@ -877,6 +880,34 @@
         const secs = seconds % 60;
         timerDiv.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
       }
+    },
+    resetUI: () => {
+      // Clear fact check items list
+      const contentDiv = document.querySelector('.fc-fact-checks');
+      if (contentDiv) {
+        contentDiv.innerHTML = '';
+        contentDiv.style.display = 'none';
+      }
+      
+      // Hide topic bar and clear text
+      const topicBar = document.querySelector('.fc-topic-bar');
+      const topicTextSpan = document.querySelector('.fc-topic-text');
+      if (topicBar && topicTextSpan) {
+        topicBar.style.display = 'none';
+        topicTextSpan.textContent = '';
+        topicBar.style.borderLeftColor = '#64748b'; // default color
+        topicTextSpan.style.color = '#f1f5f9';
+      }
+      
+      // Show loading spinner
+      const loadingDiv = document.querySelector('.fc-loading');
+      if (loadingDiv) {
+        loadingDiv.style.display = 'flex';
+      }
+      
+      // Reset streaming states
+      currentStreamingItem = null;
+      textBuffer = "";
     }
   };
 
@@ -970,6 +1001,9 @@
               socket.emit('leave_video', videoId);
               videoId = currentVideoId;
               socket.emit('join_video', videoId);
+              
+              // Reset the UI overlays and clear old cards
+              window.FactCheckOverlay.resetUI();
             }
             
             socket.emit('video_time_update', {
@@ -989,9 +1023,7 @@
       }
     });
 
-    // Handle incoming fact check streaming
-    let currentStreamingItem = null;
-    let textBuffer = "";
+    // Handle incoming fact check streaming (uses IIFE-scope currentStreamingItem and textBuffer)
     
     socket.on('factcheck_update', (data) => {
       if (data.type === 'chunk') {

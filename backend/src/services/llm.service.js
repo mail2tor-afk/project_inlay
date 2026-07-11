@@ -100,7 +100,7 @@ export const streamFactCheck = async (videoId, transcriptChunk, ragContext = '')
           const verdictMatch = fullText.match(/\[VERDICT:\s*([^\]]*?)\]/i);
           if (verdictMatch) {
             const verdict = verdictMatch[1].trim().toUpperCase();
-            if (verdict === 'FALSE' || verdict === 'MISLEADING') {
+            if (verdict === 'FALSE' || verdict === 'MISLEADING' || verdict === 'CONTEXT_NEEDED') {
               shouldStream = true;
               console.log(`[LLM] Verdict is ${verdict} - starting stream for ${videoId}`);
               // Send the initial buffered text up to this point
