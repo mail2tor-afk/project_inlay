@@ -1,4 +1,5 @@
 import { subscribe, getState } from '../services/redis.service.js';
+import { handleTimeUpdate, removeClient } from '../services/transcript.service.js';
 
 const activeSubscriptions = new Set();
 
@@ -27,6 +28,15 @@ export const setupSocketHandlers = (io) => {
       // Ensure we have a Redis subscription for this video
       subscribeToRedisChannel(io, videoId);
     });
+    
+    // Receive current video time from extension
+    socket.on('video_time_update', (data) => {
+      if (data && data.videoId && typeof data.currentTime === 'number') {
+        handleTimeUpdate(socket.id, data.videoId, data.currentTime).catch(err => {
+          console.error('[Socket] Error handling time update:', err);
+        });
+      }
+    });
 
     socket.on('leave_video', (videoId) => {
       console.log(`[Socket] ${socket.id} left video: ${videoId}`);
@@ -35,6 +45,7 @@ export const setupSocketHandlers = (io) => {
 
     socket.on('disconnect', () => {
       console.log(`[Socket] User disconnected: ${socket.id}`);
+      removeClient(socket.id);
     });
   });
 };

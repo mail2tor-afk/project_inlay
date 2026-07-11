@@ -693,21 +693,47 @@
     }
     
     const socket = io('http://localhost:3000');
+    let timeUpdateInterval = null;
     
     socket.on('connect', () => {
       console.log('[Fact-Check Overlay] Connected to Backend');
       window.FactCheckOverlay.updateStatus('Connected to Backend');
       
       const urlParams = new URLSearchParams(window.location.search);
-      const videoId = urlParams.get('v');
+      let videoId = urlParams.get('v');
+      
       if (videoId) {
         socket.emit('join_video', videoId);
+        
+        // Start sending time updates every 1 second
+        timeUpdateInterval = setInterval(() => {
+          const videoElement = document.querySelector('video');
+          if (videoElement && videoElement.currentTime > 0) {
+            // Re-check videoId in case of SPA navigation
+            const currentUrlParams = new URLSearchParams(window.location.search);
+            const currentVideoId = currentUrlParams.get('v');
+            
+            if (currentVideoId && currentVideoId !== videoId) {
+              socket.emit('leave_video', videoId);
+              videoId = currentVideoId;
+              socket.emit('join_video', videoId);
+            }
+            
+            socket.emit('video_time_update', {
+              videoId: videoId,
+              currentTime: videoElement.currentTime
+            });
+          }
+        }, 1000);
       }
     });
 
     socket.on('disconnect', () => {
       console.log('[Fact-Check Overlay] Disconnected from Backend');
       window.FactCheckOverlay.updateStatus('Disconnected');
+      if (timeUpdateInterval) {
+        clearInterval(timeUpdateInterval);
+      }
     });
 
     // Handle incoming fact check streaming
