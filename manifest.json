@@ -26,7 +26,7 @@
   "content_scripts": [
     {
       "matches": ["https://www.youtube.com/*", "https://youtube.com/*"],
-      "js": ["src/content/overlay.js"],
+      "js": ["src/content/overlay.js", "src/content/youtube-transcript.js"],
       "run_at": "document_idle",
       "all_frames": false
     }
@@ -41,6 +41,13 @@
     },
     "default_title": "Fact-Check Overlay Settings"
   },
+  
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/*", "src/config/*", "src/lib/*"],
+      "matches": ["https://www.youtube.com/*", "https://youtube.com/*"]
+    }
+  ],
   
   "icons": {
     "16": "assets/icon16.png",

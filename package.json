@@ -1,0 +1,24 @@
+{
+  "name": "project_inlay",
+  "version": "1.0.0",
+  "description": "Chrome Extension ที่แสดงหน้าต่างโปร่งใสทับวิดีโอ YouTube เพื่อแสดงข้อมูล Fact-check, Context และ Live Poll แบบเรียลไทม์",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mail2tor-afk/project_inlay.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/mail2tor-afk/project_inlay/issues"
+  },
+  "homepage": "https://github.com/mail2tor-afk/project_inlay#readme",
+  "dependencies": {
+    "firebase": "^12.16.0"
+  }
+}

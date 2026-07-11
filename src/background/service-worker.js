@@ -1,23 +1,25 @@
 // Background Service Worker for Chrome Extension
 // Handles OAuth, Authentication, and Message Routing
 
-// Temporarily removed Firebase remote imports (Manifest V3 forbids remote code)
-// We will mock them for testing OAuth login.
-const firebaseConfig = {};
-
-const app = {};
-const auth = {};
-const db = {};
-
-const doc = () => {};
-const setDoc = async () => {};
-const getDoc = async () => ({ exists: () => false });
-const serverTimestamp = () => Date.now();
-const signInWithCustomToken = async () => ({ user: { uid: 'mock_uid', email: 'test@example.com', displayName: 'Mock User', photoURL: '' } });
-const signOut = async () => {};
+import { auth, db } from '../config/firebase-config.js';
+import { signInWithCredential, GoogleAuthProvider, signOut, onAuthStateChanged } from '../lib/firebase/firebase-auth.js';
+import { doc, setDoc, getDoc, serverTimestamp } from '../lib/firebase/firebase-firestore.js';
 
 let currentUser = null;
 let guestMode = true;
+
+// Listen for auth state changes to keep our local variable in sync
+onAuthStateChanged(auth, (user) => {
+  if (user) {
+    currentUser = user;
+    guestMode = false;
+    console.log('[Background] Auth state changed: logged in as', user.email);
+  } else {
+    currentUser = null;
+    guestMode = true;
+    console.log('[Background] Auth state changed: logged out');
+  }
+});
 
 // Listen for messages from content script or popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -34,7 +36,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   
   if (message.action === 'getUser') {
-    sendResponse({ user: currentUser, isGuest: guestMode });
+    // Make sure we have the latest token if needed, or just return currentUser
+    sendResponse({ 
+      user: currentUser ? {
+        uid: currentUser.uid,
+        email: currentUser.email,
+        displayName: currentUser.displayName,
+        photoURL: currentUser.photoURL
+      } : null, 
+      isGuest: guestMode 
+    });
     return false;
   }
   
@@ -47,20 +58,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // Handle Google OAuth Login
 async function handleLogin() {
   try {
-    // Get OAuth token from Chrome Identity
+    // 1. Get OAuth token from Chrome Identity
     const oauthToken = await getChromeIdentityToken();
     
-    // Exchange OAuth token for Firebase custom token (you need a backend for this in production)
-    // For now, we'll simulate a successful login
-    const mockUid = 'user_' + Math.random().toString(36).substr(2, 9);
-    const mockCustomToken = await createMockCustomToken(mockUid);
+    // 2. Create a Firebase credential with the OAuth token
+    const credential = GoogleAuthProvider.credential(null, oauthToken);
     
-    // Sign in to Firebase
-    const userCredential = await signInWithCustomToken(auth, mockCustomToken);
+    // 3. Sign in to Firebase with the credential
+    const userCredential = await signInWithCredential(auth, credential);
     currentUser = userCredential.user;
     guestMode = false;
     
-    // Save/update user data in Firestore
+    // 4. Save/update user data in Firestore
     await saveUserDataToFirestore(currentUser);
     
     console.log('[Background] Login successful:', currentUser.email);
@@ -76,7 +85,6 @@ async function handleLogin() {
     };
   } catch (error) {
     console.error('[Background] Login failed:', error);
-    // Fallback to guest mode
     guestMode = true;
     return { success: false, isGuest: true, error: error.message };
   }
@@ -85,9 +93,6 @@ async function handleLogin() {
 // Get OAuth token using Chrome Identity API
 function getChromeIdentityToken() {
   return new Promise((resolve, reject) => {
-    // Google OAuth Client ID
-    const clientId = '127172410306-jv7sgstitmbc9nukriue4o1vvd1oco68.apps.googleusercontent.com';
-    
     chrome.identity.getAuthToken({ 
       interactive: true,
       scopes: [
@@ -105,48 +110,53 @@ function getChromeIdentityToken() {
   });
 }
 
-// Mock function to create custom token (replace with backend call in production)
-async function createMockCustomToken(uid) {
-  // In production, call your backend to create a real Firebase Custom Token
-  // This is just for development/testing
-  return uid; // Simplified for demo
-}
-
 // Save user data to Firestore
 async function saveUserDataToFirestore(user) {
-  const userRef = doc(db, 'users', user.uid);
-  const userData = {
-    email: user.email,
-    displayName: user.displayName || 'Anonymous',
-    photoURL: user.photoURL || '',
-    subscription: 'free',
-    settings: {
-      theme: 'dark',
-      overlayPosition: { x: 100, y: 100 },
-      autoFactCheck: true
-    },
-    createdAt: serverTimestamp(),
-    lastLoginAt: serverTimestamp()
-  };
-  
-  // Check if user exists
-  const userSnap = await getDoc(userRef);
-  if (userSnap.exists()) {
-    // Update only lastLoginAt
-    await setDoc(userRef, { lastLoginAt: serverTimestamp() }, { merge: true });
-  } else {
-    // Create new user document
-    await setDoc(userRef, userData);
+  try {
+    const userRef = doc(db, 'users', user.uid);
+    const userData = {
+      email: user.email,
+      displayName: user.displayName || 'Anonymous',
+      photoURL: user.photoURL || '',
+      subscription: 'free',
+      settings: {
+        theme: 'dark',
+        overlayPosition: { x: 100, y: 100 },
+        autoFactCheck: true
+      },
+      createdAt: serverTimestamp(),
+      lastLoginAt: serverTimestamp()
+    };
+    
+    // Check if user exists
+    const userSnap = await getDoc(userRef);
+    if (userSnap.exists()) {
+      // Update only lastLoginAt
+      await setDoc(userRef, { lastLoginAt: serverTimestamp() }, { merge: true });
+    } else {
+      // Create new user document
+      await setDoc(userRef, userData);
+    }
+  } catch (error) {
+    console.error('[Background] Failed to save user data:', error);
+    // Non-blocking error, user is still logged in
   }
 }
 
 // Handle Logout
 async function handleLogout() {
   try {
-    if (!guestMode && currentUser) {
+    if (currentUser) {
       await signOut(auth);
-      // Clear cached OAuth token
-      chrome.identity.removeCachedAuthToken({ token: currentUser.accessToken }, () => {});
+      
+      // We also should remove the cached token from Chrome Identity so it forces a fresh prompt if needed later
+      chrome.identity.getAuthToken({ interactive: false }, (token) => {
+        if (token) {
+          chrome.identity.removeCachedAuthToken({ token }, () => {
+            console.log('[Background] Cleared Chrome Identity token');
+          });
+        }
+      });
     }
     currentUser = null;
     guestMode = true;
@@ -180,15 +190,5 @@ async function saveFactCheckToFirestore(data) {
     return { success: false, error: error.message };
   }
 }
-
-// Listen for token changes (e.g., token expiration)
-/* chrome.identity.onTokenRemoved doesn't exist in standard Chrome API
-chrome.identity.onTokenRemoved.addListener((details) => {
-  console.log('[Background] Token removed:', details);
-  if (details.interactive) {
-    handleLogout();
-  }
-});
-*/
 
 console.log('[Background] Service worker initialized');
