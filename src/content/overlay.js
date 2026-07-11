@@ -19,6 +19,7 @@
     isDragging: false,
     isResizing: false,
     isMinimized: false,
+    isPaused: false,
     position: { ...CONFIG.defaultPosition },
     size: { ...CONFIG.defaultSize },
     dragStart: { x: 0, y: 0 },
@@ -47,6 +48,7 @@
           <span>Fact-Check Overlay</span>
         </div>
         <div class="fc-controls">
+          <button class="fc-btn fc-btn-pause" title="Pause Analysis">⏸️</button>
           <button class="fc-btn fc-btn-minimize" title="Minimize">−</button>
           <button class="fc-btn fc-btn-close" title="Close">×</button>
         </div>
@@ -380,6 +382,7 @@
     const header = overlay.querySelector('.fc-header');
     const minimizeBtn = overlay.querySelector('.fc-btn-minimize');
     const closeBtn = overlay.querySelector('.fc-btn-close');
+    const pauseBtn = overlay.querySelector('.fc-btn-pause');
     const resizeHandle = overlay.querySelector('.fc-resize-handle');
 
     // Dragging
@@ -397,6 +400,21 @@
     // Close (hide)
     closeBtn.addEventListener('click', () => {
       hideOverlay();
+    });
+
+    // Pause/Resume Analysis
+    pauseBtn.addEventListener('click', () => {
+      state.isPaused = !state.isPaused;
+      if (state.isPaused) {
+        pauseBtn.textContent = '▶️';
+        pauseBtn.title = 'Resume Analysis';
+        window.FactCheckOverlay.updateStatus('Analysis Paused');
+      } else {
+        pauseBtn.textContent = '⏸️';
+        pauseBtn.title = 'Pause Analysis';
+        window.FactCheckOverlay.updateStatus('Connected to Backend');
+      }
+      saveState();
     });
 
     // Resizing
@@ -541,12 +559,20 @@
         state.position = { ...CONFIG.defaultPosition, ...parsed.position };
         state.size = { ...CONFIG.defaultSize, ...parsed.size };
         state.isVisible = parsed.isVisible !== false;
+        state.isPaused = parsed.isPaused === true;
         
         const overlay = document.getElementById('fact-check-overlay');
         overlay.style.left = state.position.x + 'px';
         overlay.style.top = state.position.y + 'px';
         overlay.style.width = state.size.width + 'px';
         overlay.style.height = state.size.height + 'px';
+        
+        // Update Pause button icon based on loaded state
+        const pauseBtn = overlay.querySelector('.fc-btn-pause');
+        if (pauseBtn) {
+          pauseBtn.textContent = state.isPaused ? '▶️' : '⏸️';
+          pauseBtn.title = state.isPaused ? 'Resume Analysis' : 'Pause Analysis';
+        }
         
         // FORCE overlay to always be visible for debugging
         state.isVisible = true;
@@ -562,7 +588,8 @@
       localStorage.setItem(CONFIG.storageKey, JSON.stringify({
         position: state.position,
         size: state.size,
-        isVisible: state.isVisible
+        isVisible: state.isVisible,
+        isPaused: state.isPaused
       }));
     } catch (error) {
       console.error('[Fact-Check Overlay] Failed to save state:', error);
@@ -697,7 +724,7 @@
     
     socket.on('connect', () => {
       console.log('[Fact-Check Overlay] Connected to Backend');
-      window.FactCheckOverlay.updateStatus('Connected to Backend');
+      window.FactCheckOverlay.updateStatus(state.isPaused ? 'Analysis Paused' : 'Connected to Backend');
       
       const urlParams = new URLSearchParams(window.location.search);
       let videoId = urlParams.get('v');
@@ -707,6 +734,9 @@
         
         // Start sending time updates every 1 second
         timeUpdateInterval = setInterval(() => {
+          // If analysis is paused, skip sending time updates
+          if (state.isPaused) return;
+
           const videoElement = document.querySelector('video');
           if (videoElement && videoElement.currentTime > 0) {
             // Re-check videoId in case of SPA navigation
