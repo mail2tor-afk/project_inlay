@@ -4,6 +4,9 @@ import { publish } from './redis.service.js';
 
 let genAI = null;
 
+// Queue lock: only one LLM call at a time to prevent rate limit avalanche
+let isProcessing = false;
+
 export const initLLM = () => {
   if (config.gemini.apiKey) {
     genAI = new GoogleGenerativeAI(config.gemini.apiKey);
@@ -37,6 +40,12 @@ Transcript to analyze:
 export const streamFactCheck = async (videoId, transcriptChunk, ragContext = '') => {
   const channelName = `factcheck:${videoId}`;
   
+  // Skip if already processing another chunk (prevent rate limit avalanche)
+  if (isProcessing) {
+    console.log(`[LLM] Skipping chunk - already processing another request`);
+    return null;
+  }
+  
   if (!genAI) {
     // Mock streaming
     console.log(`[LLM Mock] Fact checking for ${videoId}`);
@@ -53,61 +62,53 @@ export const streamFactCheck = async (videoId, transcriptChunk, ragContext = '')
     return fullText.trim();
   }
 
-  const MAX_RETRIES = 3;
+  isProcessing = true;
+  console.log(`[LLM] Starting fact-check for ${videoId}...`);
   
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
-      
-      const prompt = FACT_CHECK_PROMPT
-        .replace('{CONTEXT}', ragContext || 'No context found.')
-        .replace('{TRANSCRIPT}', transcriptChunk);
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
+    
+    const prompt = FACT_CHECK_PROMPT
+      .replace('{CONTEXT}', ragContext || 'No context found.')
+      .replace('{TRANSCRIPT}', transcriptChunk);
 
-      const result = await model.generateContentStream(prompt);
+    const result = await model.generateContentStream(prompt);
+    
+    let fullText = "";
+    
+    for await (const chunk of result.stream) {
+      const chunkText = chunk.text();
+      fullText += chunkText;
       
-      let fullText = "";
-      
-      for await (const chunk of result.stream) {
-        const chunkText = chunk.text();
-        fullText += chunkText;
-        
-        // Broadcast the accumulated text to all connected users
-        await publish(channelName, { 
-          type: 'chunk', 
-          text: fullText 
-        });
-      }
-      
-      // Check if AI said to skip (filler content)
-      if (fullText.trim() === "SKIP" || fullText.trim().includes("NO_FACT_CHECK_NEEDED")) {
-        await publish(channelName, { type: 'cancel' });
-        return null;
-      }
-      
-      // Broadcast completion
-      await publish(channelName, { type: 'done', text: fullText.trim() });
-      return fullText.trim();
-
-    } catch (error) {
-      const isRateLimit = error.status === 429;
-      
-      if (isRateLimit && attempt < MAX_RETRIES) {
-        // Extract retry delay from error if available, default to exponential backoff
-        const retryDelay = error.errorDetails?.find(d => d.retryDelay)?.retryDelay;
-        const waitMs = retryDelay ? parseInt(retryDelay) * 1000 : (attempt * 15000);
-        console.log(`[LLM] Rate limited (attempt ${attempt}/${MAX_RETRIES}). Retrying in ${waitMs/1000}s...`);
-        await new Promise(r => setTimeout(r, waitMs));
-        continue;
-      }
-      
-      console.error(`[LLM] Error in streamFactCheck (attempt ${attempt}):`, error.message || error);
-      
-      const errorMsg = isRateLimit 
-        ? 'API quota exceeded. Please check your Gemini API key and billing.'
-        : 'Fact check failed: ' + (error.message || 'Unknown error');
-      
-      await publish(channelName, { type: 'error', message: errorMsg });
+      // Broadcast the accumulated text to all connected users
+      await publish(channelName, { 
+        type: 'chunk', 
+        text: fullText 
+      });
+    }
+    
+    console.log(`[LLM] Completed fact-check: "${fullText.substring(0, 50)}..."`);
+    
+    // Check if AI said to skip (filler content)
+    if (fullText.trim() === "SKIP" || fullText.trim().includes("NO_FACT_CHECK_NEEDED")) {
+      await publish(channelName, { type: 'cancel' });
       return null;
     }
+    
+    // Broadcast completion
+    await publish(channelName, { type: 'done', text: fullText.trim() });
+    return fullText.trim();
+
+  } catch (error) {
+    console.error(`[LLM] Error:`, error.message || error);
+    
+    const errorMsg = error.status === 429
+      ? 'API quota exceeded. Please wait or check billing.'
+      : 'Fact check failed: ' + (error.message || 'Unknown error');
+    
+    await publish(channelName, { type: 'error', message: errorMsg });
+    return null;
+  } finally {
+    isProcessing = false;
   }
 };
