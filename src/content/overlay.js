@@ -643,12 +643,29 @@
   // INITIALIZATION
   // ============================================
 
+  // ============================================
+  // MESSAGE LISTENER
+  // ============================================
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === 'showOverlay') {
+      showOverlay();
+      sendResponse({ status: 'ok' });
+    } else if (message.action === 'hideOverlay') {
+      hideOverlay();
+      sendResponse({ status: 'ok' });
+    }
+  });
+
   // Wait for YouTube to load
   function waitForYouTube() {
+    let attempts = 0;
     const checkInterval = setInterval(() => {
-      const player = document.querySelector('#movie_player') || document.querySelector('#primary');
-      if (player) {
+      attempts++;
+      const player = document.querySelector('#movie_player') || document.querySelector('video');
+      
+      if (player || attempts > 20) { // Fallback after 10 seconds even if player not found
         clearInterval(checkInterval);
+        console.log('[Fact-Check Overlay] Initializing UI...');
         createOverlay();
         
         // Start timer
