@@ -1,0 +1,34 @@
+{
+  "fc_aqx5B2POsv8_1783789990395": {
+    "factCheckId": "fc_aqx5B2POsv8_1783789990395",
+    "videoId": "aqx5B2POsv8",
+    "topic": "ปริมาณน้ำมะพร้าวต่อลิตร",
+    "realtimeVerdict": "บิดเบือน",
+    "likes": 1,
+    "dislikes": 0,
+    "reasons": {
+      "inaccurate": 0,
+      "missing_context": 0,
+      "wrong_analysis": 0,
+      "other": 0
+    },
+    "comments": [],
+    "lastVoted": "2026-07-11T17:13:33.468Z"
+  },
+  "fc_aqx5B2POsv8_1783810782281": {
+    "factCheckId": "fc_aqx5B2POsv8_1783810782281",
+    "videoId": "aqx5B2POsv8",
+    "topic": "การใช้ประโยชน์จากมะพร้าวน้ำหอม",
+    "realtimeVerdict": "จริง",
+    "likes": 0,
+    "dislikes": 0,
+    "reasons": {
+      "inaccurate": 0,
+      "missing_context": 0,
+      "wrong_analysis": 0,
+      "other": 0
+    },
+    "comments": [],
+    "lastVoted": "2026-07-11T23:00:42.201Z"
+  }
+}

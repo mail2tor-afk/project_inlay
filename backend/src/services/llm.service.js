@@ -1,6 +1,8 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { config } from '../config/index.js';
 import { publish } from './redis.service.js';
+import { setCachedResult } from './cache.service.js';
+import { getChannelHistoryContext } from './channel-history.service.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -49,8 +51,9 @@ function logFactCheckToHistory(videoId, transcript, context, llmResponse) {
 
 let genAI = null;
 
-// Queue lock: only one LLM call at a time to prevent rate limit avalanche
-let isProcessing = false;
+// Queue lock: one LLM call at a time *per video* to prevent rate limit avalanche
+// (per-video Set instead of a global flag so one slow video doesn't starve others)
+const processingVideos = new Set();
 
 const promptConfigPath = path.join(__dirname, '../../prompt_config.json');
 let currentPrompt = null;
@@ -92,6 +95,14 @@ export const updatePromptConfig = (newPrompt) => {
     if (!newPrompt.includes(tag)) {
       throw new Error(`Prompt missing required output format tag: ${tag}`);
     }
+  }
+
+  // {CONTEXT_BEFORE} / {CHANNEL_HISTORY} ไม่บังคับ (back-compat) แต่เตือนถ้าไม่มี
+  if (!newPrompt.includes('{CONTEXT_BEFORE}')) {
+    console.warn('[LLM] Custom prompt saved without {CONTEXT_BEFORE} placeholder - prior-context injection will be skipped for this prompt');
+  }
+  if (!newPrompt.includes('{CHANNEL_HISTORY}')) {
+    console.warn('[LLM] Custom prompt saved without {CHANNEL_HISTORY} placeholder - channel-history injection will be skipped for this prompt');
   }
 
   try {
@@ -153,16 +164,24 @@ export const DEFAULT_FACT_CHECK_PROMPT = `
 
 หน้าที่ของคุณ:
 1. หากเนื้อหาคลิปถูกต้อง ไม่มีประเด็นต้องแก้ไข ให้ตอบคำเดียวว่า "SKIP" (ห้ามมีคำอื่น)
-2. หากเนื้อหาเข้าข่าย เท็จ (FALSE), บิดเบือน (MISLEADING), หรือข้อมูลที่เป็นความจริงที่สำคัญที่ต้องยืนยัน (FACT) ให้สรุปฟันธงสั้นๆ ทันที
+2. หากไม่มี claim ที่ตรวจสอบได้ เช่น ประโยคไม่สมบูรณ์/พูดค้างไว้, คำทักทาย, มุกตลก, หรือความคิดเห็นล้วนๆ ให้ตอบคำเดียวว่า "SKIP" (ห้ามมีคำอื่น)
+3. ห้ามเขียน ANALYSIS ทำนอง "คลิปสั้นเกินไป", "บริบทไม่เพียงพอ", "ไม่สามารถตรวจสอบได้", "ไม่ทราบที่มา" โดยเด็ดขาด — กรณีเหล่านั้นต้องตอบ "SKIP" เท่านั้น
+4. หากเนื้อหาเข้าข่าย เท็จ (FALSE), บิดเบือน (MISLEADING), หรือข้อมูลที่เป็นความจริงที่สำคัญที่ต้องยืนยัน (FACT) ให้สรุปฟันธงทันที
 
 คุณต้องแสดงผลลัพธ์ในรูปแบบ Tag ดังนี้เท่านั้น (ห้ามมี Markdown Code block หรือคำเกริ่นนำ):
 [TOPIC: <หัวข้อสั้นๆ ไม่เกิน 5 คำ>]
 [SPEAKER: <ชื่อคนพูด>]
 [VERDICT: <FACT | FALSE | MISLEADING>]
-[ANALYSIS: <เขียนฟันธงสั้นๆ 1-2 ประโยคตามแนวทางด้านบน>]
+[ANALYSIS: <เขียนฟันธง 2-4 ประโยคตามแนวทางด้านบน พร้อมข้อเท็จจริงที่ถูกต้องและแหล่งอ้างอิง>]
 
 Context from database:
 {CONTEXT}
+
+ข้อมูลพื้นหลังของช่องนี้ (หัวข้อ/บุคคลที่เคยพูดถึงบ่อยในอดีต ใช้ทำความเข้าใจพื้นหลังเท่านั้น ห้ามอ้างเป็นข้อเท็จจริงใหม่หรือใช้แทนข้อมูลปัจจุบัน ระวังอย่านำตำแหน่ง/สถานะเก่ามาตัดสินคำพูดที่กำลังพูดถึงช่วงเวลาอื่น):
+{CHANNEL_HISTORY}
+
+บทสนทนาช่วงก่อนหน้า (ใช้ทำความเข้าใจบริบทเท่านั้น ห้ามตรวจสอบซ้ำ ห้ามอ้างเป็นคำพูดใหม่):
+{CONTEXT_BEFORE}
 
 Transcript to analyze:
 {TRANSCRIPT}
@@ -172,12 +191,12 @@ Transcript to analyze:
  * Fact check using Gemini Stream
  * Streams the response to Redis pub/sub channel for real-time broadcast
  */
-export const streamFactCheck = async (videoId, transcriptChunk, ragContext = '') => {
+export const streamFactCheck = async (videoId, transcriptChunk, ragContext = '', contextBefore = '', needsGrounding = true, chunkStartTime = 0) => {
   const channelName = `factcheck:${videoId}`;
-  
-  // Skip if already processing another chunk (prevent rate limit avalanche)
-  if (isProcessing) {
-    console.log(`[LLM] Skipping chunk - already processing another request`);
+
+  // Skip if already processing another chunk for this video (prevent rate limit avalanche)
+  if (processingVideos.has(videoId)) {
+    console.log(`[LLM] Skipping chunk for ${videoId} - already processing another request for this video`);
     return null;
   }
   
@@ -197,14 +216,24 @@ export const streamFactCheck = async (videoId, transcriptChunk, ragContext = '')
     return fullText.trim();
   }
 
-  isProcessing = true;
+  processingVideos.add(videoId);
   console.log(`[LLM] Starting fact-check for ${videoId}...`);
-  
+
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
-    
+    const model = genAI.getGenerativeModel({
+      model: config.gemini.model,
+      // thinkingBudget: 0 - gemini-3.5-flash คิดภายใน (thinking) โดยปริยาย กินไป ~300-500/512 token
+      // ทำให้คำตอบจริงถูกตัดกลางคัน (finishReason: MAX_TOKENS) - ปิดไว้เพื่อความสมบูรณ์ของคำตอบ + ประหยัด token ~3 เท่า
+      generationConfig: { temperature: 0.2, topP: 0.9, maxOutputTokens: 512, thinkingConfig: { thinkingBudget: 0 } },
+      // เปิด Google Search grounding เฉพาะเมื่อ RAG อ่อน (needsGrounding) และไม่ได้ปิดผ่าน env
+      ...(config.gemini.groundingEnabled && needsGrounding ? { tools: [{ google_search: {} }] } : {}),
+    });
+
+    const channelHistory = getChannelHistoryContext(videoId);
     const prompt = getFactCheckPrompt()
       .replace('{CONTEXT}', ragContext || 'No context found.')
+      .replace('{CHANNEL_HISTORY}', channelHistory || 'ไม่มีข้อมูลประวัติช่องนี้มาก่อน')
+      .replace('{CONTEXT_BEFORE}', contextBefore || 'ไม่มี (จุดเริ่มต้นคลิป)')
       .replace('{TRANSCRIPT}', transcriptChunk);
 
     const result = await model.generateContentStream(prompt);
@@ -267,9 +296,16 @@ export const streamFactCheck = async (videoId, transcriptChunk, ragContext = '')
       // Save to history log for prompt adjustments
       logFactCheckToHistory(videoId, transcriptChunk, ragContext, fullText);
 
+      // จำผลไว้ถาวร (ข้าม session/server restart) กันรัน AI ซ้ำถ้าช่วงนี้ของวิดีโอถูกดูอีก
+      setCachedResult(videoId, chunkStartTime, fullText.trim());
+
       return fullText.trim();
     } else {
       await publish(channelName, { type: 'cancel' });
+      if (shouldStream === false) {
+        // AI ตัดสินใจ SKIP ชัดเจนแล้ว (ไม่ใช่ error/ติด lock) - จำไว้กันรันซ้ำเช่นกัน
+        setCachedResult(videoId, chunkStartTime, 'SKIP');
+      }
       return null;
     }
 
@@ -283,20 +319,26 @@ export const streamFactCheck = async (videoId, transcriptChunk, ragContext = '')
     await publish(channelName, { type: 'error', message: errorMsg });
     return null;
   } finally {
-    isProcessing = false;
+    processingVideos.delete(videoId);
   }
 };
 
-export const testPromptFactCheck = async (promptText, transcriptText, contextText) => {
+export const testPromptFactCheck = async (promptText, transcriptText, contextText, contextBeforeText = '', channelHistoryText = '') => {
   if (!genAI) {
     console.log('[LLM Test Mock] Testing testPromptFactCheck offline mode');
     return "[TOPIC: ทดสอบระบบ]\n[SPEAKER: แอดมิน]\n[VERDICT: FACT]\n[ANALYSIS: นี่คือการประมวลผลจำลองบนเซิร์ฟเวอร์แบบออฟไลน์]";
   }
-  
+
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
+    const model = genAI.getGenerativeModel({
+      model: config.gemini.model,
+      generationConfig: { temperature: 0.2, topP: 0.9, maxOutputTokens: 512, thinkingConfig: { thinkingBudget: 0 } },
+      ...(config.gemini.groundingEnabled ? { tools: [{ google_search: {} }] } : {}),
+    });
     const formattedPrompt = promptText
       .replace('{CONTEXT}', contextText || 'No context found.')
+      .replace('{CHANNEL_HISTORY}', channelHistoryText || 'ไม่มีข้อมูลประวัติช่องนี้มาก่อน')
+      .replace('{CONTEXT_BEFORE}', contextBeforeText || 'ไม่มี (จุดเริ่มต้นคลิป)')
       .replace('{TRANSCRIPT}', transcriptText);
 
     const result = await model.generateContent(formattedPrompt);

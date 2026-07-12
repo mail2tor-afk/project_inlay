@@ -28,13 +28,16 @@
     position: { ...CONFIG.defaultPosition },
     size: { ...CONFIG.defaultSize },
     dragStart: { x: 0, y: 0 },
+    dragOrigin: { x: 0, y: 0 },
+    dragMoved: false,
     resizeStart: { width: 0, height: 0, x: 0, y: 0 }
   };
 
   let currentStreamingItem = null;
   let textBuffer = "";
 
-  const userVotes = {}; // local vote state tracking
+  const userVotes = {}; // local vote state tracking (likes/dislikes)
+  const userReasonVotes = {}; // local vote state tracking (reasons feedback)
 
   function formatRelativeTime(timestamp) {
     const diffMs = Date.now() - timestamp;
@@ -46,32 +49,96 @@
     return `เมื่อ ${diffMins} นาทีที่แล้ว`;
   }
 
-  function handleVoteClick(factCheckId, voteType) {
-    if (userVotes[factCheckId]) return; // Prevent double voting
-
-    userVotes[factCheckId] = voteType;
-    
-    // Toggle active state classes on card buttons
+  function getCardVoteContext(factCheckId) {
     const card = document.getElementById(factCheckId);
+    let verdict = 'neutral';
+    let topic = 'N/A';
     if (card) {
-      if (voteType === 'like') {
-        const btn = card.querySelector('.fc-vote-like');
-        if (btn) btn.classList.add('fc-voted-like');
-      } else {
-        const btn = card.querySelector('.fc-vote-dislike');
-        if (btn) btn.classList.add('fc-voted-dislike');
-      }
+      const labelEl = card.querySelector('.fc-fact-label');
+      if (labelEl) verdict = labelEl.textContent.trim();
+    }
+    const topicTextEl = document.querySelector('.fc-topic-text');
+    if (topicTextEl) topic = topicTextEl.textContent.trim();
+    return { card, verdict, topic };
+  }
+
+  function emitVote(factCheckId, voteType, action, { verdict, topic, reasonType = null, comment = '', previousVoteType } = {}) {
+    if (!window.FactCheckOverlay.socket) return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const videoId = urlParams.get('v');
+    const payload = {
+      factCheckId,
+      voteType,
+      videoId,
+      topic,
+      verdict,
+      reasonType,
+      comment,
+      action
+    };
+    if (previousVoteType) payload.previousVoteType = previousVoteType;
+    window.FactCheckOverlay.socket.emit('vote_factcheck', payload);
+  }
+
+  function setVoteButtonActive(card, voteType, isActive) {
+    if (!card) return;
+    const btn = card.querySelector(voteType === 'like' ? '.fc-vote-like' : '.fc-vote-dislike');
+    if (btn) btn.classList.toggle(voteType === 'like' ? 'fc-voted-like' : 'fc-voted-dislike', isActive);
+  }
+
+  function setReasonVotedState(card, isVoted) {
+    if (!card) return;
+    const reasonBtn = card.querySelector('.fc-vote-reason-btn');
+    if (reasonBtn) reasonBtn.classList.toggle('fc-reason-voted', isVoted);
+    const cancelReasonBtn = card.querySelector('.fc-btn-cancel-reason-vote');
+    if (cancelReasonBtn) cancelReasonBtn.style.display = isVoted ? 'block' : 'none';
+  }
+
+  function handleVoteClick(factCheckId, voteType, reasonType = null, comment = '') {
+    const { card, verdict, topic } = getCardVoteContext(factCheckId);
+
+    // Reason votes: one active reason vote per card (cancel first to re-vote)
+    if (voteType === 'reason') {
+      if (userReasonVotes[factCheckId]) return;
+      userReasonVotes[factCheckId] = reasonType;
+      emitVote(factCheckId, voteType, 'add', { verdict, topic, reasonType, comment });
+      setReasonVotedState(card, true);
+      return;
     }
 
-    if (window.FactCheckOverlay.socket) {
-      const urlParams = new URLSearchParams(window.location.search);
-      const videoId = urlParams.get('v');
-      window.FactCheckOverlay.socket.emit('vote_factcheck', {
-        factCheckId,
-        voteType,
-        videoId
-      });
+    const existingVote = userVotes[factCheckId];
+
+    // Same button clicked again -> un-vote
+    if (existingVote === voteType) {
+      emitVote(factCheckId, voteType, 'remove', { verdict, topic });
+      delete userVotes[factCheckId];
+      setVoteButtonActive(card, voteType, false);
+      return;
     }
+
+    // Switch like <-> dislike
+    if (existingVote && existingVote !== voteType) {
+      emitVote(factCheckId, voteType, 'switch', { verdict, topic, previousVoteType: existingVote });
+      userVotes[factCheckId] = voteType;
+      setVoteButtonActive(card, existingVote, false);
+      setVoteButtonActive(card, voteType, true);
+      return;
+    }
+
+    // Fresh vote
+    emitVote(factCheckId, voteType, 'add', { verdict, topic });
+    userVotes[factCheckId] = voteType;
+    setVoteButtonActive(card, voteType, true);
+  }
+
+  function handleCancelReasonVote(factCheckId) {
+    const reasonType = userReasonVotes[factCheckId];
+    if (!reasonType) return;
+
+    const { card, verdict, topic } = getCardVoteContext(factCheckId);
+    emitVote(factCheckId, 'reason', 'remove', { verdict, topic, reasonType });
+    delete userReasonVotes[factCheckId];
+    setReasonVotedState(card, false);
   }
 
   function updateCardTimestamps() {
@@ -197,6 +264,9 @@
       <!-- Resize Handle (Bottom-Right Corner) -->
       <div class="fc-resize-handle" title="Resize"></div>
 
+      <!-- Restore Bubble (shown only when minimized) -->
+      <button class="fc-restore-bubble" title="เปิด Fact-Check Overlay">🔍</button>
+
       <!-- Footer -->
       <div class="fc-footer">
         <div class="fc-status">
@@ -253,12 +323,48 @@
         pointer-events: none;
       }
 
+      .fc-restore-bubble {
+        display: none;
+      }
+
+      .fc-overlay.fc-minimized {
+        width: 52px !important;
+        height: 52px !important;
+        min-width: 0;
+        min-height: 0;
+        border-radius: 50%;
+        overflow: hidden;
+        /* พื้นทึบ + ขอบสว่างคงที่ ไม่ผูกกับ opacity ที่ผู้ใช้ตั้งไว้ กันจมหายกับพื้นหลังดำของ YouTube player */
+        background: rgba(30, 41, 59, 0.97) !important;
+        border: 2px solid rgba(96, 165, 250, 0.95) !important;
+        box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.65), 0 4px 16px rgba(0, 0, 0, 0.6), 0 0 14px rgba(96, 165, 250, 0.55) !important;
+        cursor: grab;
+      }
+
+      .fc-overlay.fc-minimized:active {
+        cursor: grabbing;
+      }
+
+      .fc-overlay.fc-minimized .fc-header,
       .fc-overlay.fc-minimized .fc-content,
       .fc-overlay.fc-minimized .fc-settings-panel,
       .fc-overlay.fc-minimized .fc-topic-bar,
       .fc-overlay.fc-minimized .fc-footer,
       .fc-overlay.fc-minimized .fc-resize-handle {
         display: none !important;
+      }
+
+      .fc-overlay.fc-minimized .fc-restore-bubble {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+        border: none;
+        background: transparent;
+        color: #f1f5f9;
+        cursor: pointer;
+        font-size: 22px;
       }
 
       .fc-header {
@@ -625,6 +731,110 @@
         color: #ef4444;
       }
 
+      .fc-vote-btn.fc-reason-voted {
+        background: rgba(59, 130, 246, 0.12);
+        border-color: #3b82f6;
+        color: #3b82f6;
+      }
+
+      /* Stacked mini bar chart ratio */
+      .fc-vote-chart {
+        display: flex;
+        height: 4px;
+        border-radius: 2px;
+        overflow: hidden;
+        margin-top: 6px;
+        background: rgba(255, 255, 255, 0.1);
+      }
+      .fc-vote-bar-like {
+        height: 100%;
+        transition: width 0.3s ease, background 0.3s ease;
+      }
+      .fc-vote-bar-dislike {
+        height: 100%;
+        transition: width 0.3s ease, background 0.3s ease;
+      }
+
+      /* Dislike Popover Panel styling */
+      .fc-dislike-popover {
+        position: absolute;
+        top: calc(100% + 8px);
+        left: 12px;
+        right: 12px;
+        background: rgba(15, 23, 42, 0.95);
+        backdrop-filter: blur(8px);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 8px;
+        padding: 12px;
+        z-index: 100;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        max-height: 260px;
+        overflow-y: auto;
+        display: none;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .fc-popover-title {
+        font-size: 11px;
+        font-weight: 600;
+        color: #f1f5f9;
+        margin-bottom: 4px;
+      }
+      .fc-popover-option {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        color: #94a3b8;
+        cursor: pointer;
+      }
+      .fc-popover-option input {
+        cursor: pointer;
+        margin: 0;
+      }
+      .fc-popover-comment {
+        background: rgba(0, 0, 0, 0.3);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 4px;
+        color: #f1f5f9;
+        font-size: 10px;
+        padding: 4px;
+        resize: none;
+        width: 100%;
+        height: 35px;
+        outline: none;
+      }
+      .fc-popover-comment:focus {
+        border-color: #3b82f6;
+      }
+      .fc-popover-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 6px;
+      }
+      .fc-popover-btn {
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-size: 10px;
+        font-weight: 600;
+        cursor: pointer;
+        border: none;
+      }
+      .fc-popover-btn-cancel {
+        background: rgba(255, 255, 255, 0.05);
+        color: #94a3b8;
+      }
+      .fc-popover-btn-submit {
+        background: #ef4444;
+        color: #fff;
+      }
+      .fc-btn-cancel-reason-vote {
+        background: rgba(245, 158, 11, 0.15);
+        color: #f59e0b;
+        margin-right: auto;
+        display: none;
+      }
+
       .fc-fact-source {
         font-size: 11px;
         color: #64748b;
@@ -729,12 +939,24 @@
     document.addEventListener('mousemove', onDrag);
     document.addEventListener('mouseup', endDrag);
 
-    // Minimize
+    // Minimize (collapse to floating bubble)
     minimizeBtn.addEventListener('click', () => {
-      state.isMinimized = !state.isMinimized;
-      overlay.classList.toggle('fc-minimized', state.isMinimized);
+      state.isMinimized = true;
+      overlay.classList.add('fc-minimized');
       saveState();
     });
+
+    // Restore from minimized bubble (draggable - click restores, drag moves it)
+    const restoreBubble = overlay.querySelector('.fc-restore-bubble');
+    if (restoreBubble) {
+      restoreBubble.addEventListener('mousedown', startDrag);
+      restoreBubble.addEventListener('click', () => {
+        if (state.dragMoved) return; // ลากไม่ใช่กด อย่าเปิดคืน
+        state.isMinimized = false;
+        overlay.classList.remove('fc-minimized');
+        saveState();
+      });
+    }
 
     // Close (hide)
     closeBtn.addEventListener('click', () => {
@@ -840,11 +1062,59 @@
           return;
         }
 
-        // 3. Dislike Button
+        // 3. Dislike Button - immediately votes Dislike
         const dislikeBtn = e.target.closest('.fc-vote-dislike');
         if (dislikeBtn) {
           const factCheckId = dislikeBtn.dataset.id;
           handleVoteClick(factCheckId, 'dislike');
+          return;
+        }
+
+        // 4. Vote Reason Toggle Button - opens popover
+        const reasonToggleBtn = e.target.closest('.fc-vote-reason-btn');
+        if (reasonToggleBtn) {
+          const factCheckId = reasonToggleBtn.dataset.id;
+          const popover = document.getElementById(`popover-${factCheckId}`);
+          if (popover) {
+            const isCurrentlyShown = popover.style.display === 'flex';
+            popover.style.display = isCurrentlyShown ? 'none' : 'flex';
+          }
+          return;
+        }
+
+        // 5. Cancel Existing Reason Vote Button inside Popover
+        const cancelReasonVoteBtn = e.target.closest('.fc-btn-cancel-reason-vote');
+        if (cancelReasonVoteBtn) {
+          e.stopPropagation();
+          const factCheckId = cancelReasonVoteBtn.dataset.id;
+          handleCancelReasonVote(factCheckId);
+          return;
+        }
+
+        // 6. Cancel Button inside Popover (close only)
+        const cancelBtn = e.target.closest('.fc-popover-btn-cancel');
+        if (cancelBtn) {
+          e.stopPropagation();
+          const popover = cancelBtn.closest('.fc-dislike-popover');
+          if (popover) popover.style.display = 'none';
+          return;
+        }
+
+        // 7. Submit Vote Reason Button inside Popover
+        const submitVoteBtn = e.target.closest('.fc-btn-submit-vote');
+        if (submitVoteBtn) {
+          e.stopPropagation();
+          const factCheckId = submitVoteBtn.dataset.id;
+          const popover = document.getElementById(`popover-${factCheckId}`);
+          if (popover) {
+            const selectedRadio = popover.querySelector(`input[name="reason-${factCheckId}"]:checked`);
+            const reasonType = selectedRadio ? selectedRadio.value : 'inaccurate';
+            const commentInput = popover.querySelector(`#comment-${factCheckId}`);
+            const comment = commentInput ? commentInput.value : '';
+
+            handleVoteClick(factCheckId, 'reason', reasonType, comment);
+            popover.style.display = 'none';
+          }
           return;
         }
       });
@@ -863,11 +1133,14 @@
 
   function startDrag(e) {
     if (e.target.closest('.fc-controls')) return;
-    
+
     state.isDragging = true;
+    state.dragMoved = false;
+    state.dragOrigin.x = e.clientX;
+    state.dragOrigin.y = e.clientY;
     state.dragStart.x = e.clientX - state.position.x;
     state.dragStart.y = e.clientY - state.position.y;
-    
+
     const overlay = document.getElementById('fact-check-overlay');
     overlay.style.transition = 'none';
   }
@@ -876,6 +1149,15 @@
     if (!state.isDragging) return;
 
     const overlay = document.getElementById('fact-check-overlay');
+
+    if (!state.dragMoved) {
+      const dx = e.clientX - state.dragOrigin.x;
+      const dy = e.clientY - state.dragOrigin.y;
+      if (Math.sqrt(dx * dx + dy * dy) > CONFIG.dragThreshold) {
+        state.dragMoved = true;
+      }
+    }
+
     state.position.x = e.clientX - state.dragStart.x;
     state.position.y = e.clientY - state.dragStart.y;
 
@@ -992,10 +1274,15 @@
         state.opacity = parsed.opacity !== undefined ? parsed.opacity : 85;
         state.showFact = parsed.showFact !== false;
         state.showMisleading = parsed.showMisleading !== false;
-        
+        state.isMinimized = parsed.isMinimized === true;
+
         const overlay = document.getElementById('fact-check-overlay');
+        if (!overlay) return;
         applyStateStyles();
-        
+
+        // Restore minimized state (floating bubble)
+        overlay.classList.toggle('fc-minimized', state.isMinimized);
+
         // Update Pause button icon based on loaded state
         const pauseBtn = overlay.querySelector('.fc-btn-pause');
         if (pauseBtn) {
@@ -1043,6 +1330,7 @@
         size: state.size,
         isVisible: state.isVisible,
         isPaused: state.isPaused,
+        isMinimized: state.isMinimized,
         fontSize: state.fontSize,
         opacity: state.opacity,
         showFact: state.showFact,
@@ -1056,15 +1344,30 @@
   function hideOverlay() {
     state.isVisible = false;
     const overlay = document.getElementById('fact-check-overlay');
-    overlay.classList.add('fc-hidden');
+    if (overlay) overlay.classList.add('fc-hidden');
     saveState();
+    syncOverlayEnabledStorage(false);
   }
 
   function showOverlay() {
     state.isVisible = true;
     const overlay = document.getElementById('fact-check-overlay');
-    overlay.classList.remove('fc-hidden');
+    if (overlay) overlay.classList.remove('fc-hidden');
     saveState();
+    syncOverlayEnabledStorage(true);
+  }
+
+  // ปุ่มกากบาทในหน้าเว็บปิด overlay ได้ตรงๆ โดยไม่ผ่าน popup toggle
+  // ถ้าไม่ sync กลับ chrome.storage.local ตัว toggle ใน popup จะค้างว่า "on" อยู่
+  // ทำให้กดครั้งแรกไม่มีผล (ต้องปิด-เปิดซ้ำ) เพราะ toggle คิดว่ากำลังจะเปลี่ยนจาก on เป็น off
+  function syncOverlayEnabledStorage(isEnabled) {
+    try {
+      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.set({ overlayEnabled: isEnabled });
+      }
+    } catch (error) {
+      // Extension context อาจถูก invalidate ระหว่างนำทาง SPA - ไม่ใช่เรื่องร้ายแรง
+    }
   }
 
   // ============================================
@@ -1136,15 +1439,66 @@
         <div class="fc-fact-text">${data.text}</div>
         
         <!-- Like/Dislike Vote Bar -->
-        <div class="fc-card-votes">
+        <div class="fc-card-votes" style="position: relative;">
           <button class="fc-vote-btn fc-vote-like" data-id="${factCheckId}">
             👍 <span class="fc-like-count">${data.likes || 0}</span>
           </button>
           <button class="fc-vote-btn fc-vote-dislike" data-id="${factCheckId}">
             👎 <span class="fc-dislike-count">${data.dislikes || 0}</span>
           </button>
+          <button class="fc-vote-btn fc-vote-reason-btn" data-id="${factCheckId}">
+            🗳️ โหวตเหตุผล
+          </button>
+          
+          <!-- Dislike Popover Options Panel -->
+          <div class="fc-dislike-popover" id="popover-${factCheckId}">
+            <div class="fc-popover-title">เหตุผลที่โหวตไม่ถูกต้อง:</div>
+            <label class="fc-popover-option">
+              <input type="radio" name="reason-${factCheckId}" value="inaccurate" checked> ข้อมูลคลาดเคลื่อน
+            </label>
+            <label class="fc-popover-option">
+              <input type="radio" name="reason-${factCheckId}" value="missing_context"> บริบทไม่ครบถ้วน
+            </label>
+            <label class="fc-popover-option">
+              <input type="radio" name="reason-${factCheckId}" value="wrong_analysis"> AI วิเคราะห์บิดเบือน
+            </label>
+            <textarea class="fc-popover-comment" id="comment-${factCheckId}" placeholder="ความคิดเห็นเพิ่มเติม..."></textarea>
+            <div class="fc-popover-actions">
+              <button class="fc-popover-btn fc-btn-cancel-reason-vote" data-id="${factCheckId}">ยกเลิกโหวตเดิม</button>
+              <button class="fc-popover-btn fc-popover-btn-cancel">ยกเลิก</button>
+              <button class="fc-popover-btn fc-popover-btn-submit fc-btn-submit-vote" data-id="${factCheckId}">ส่งโหวต</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mini Horizontal Bar Chart -->
+        <div class="fc-vote-chart" id="chart-${factCheckId}">
+          <div class="fc-vote-bar-like" style="width: 50%; background: rgba(255, 255, 255, 0.1);"></div>
+          <div class="fc-vote-bar-dislike" style="width: 50%; background: rgba(255, 255, 255, 0.1);"></div>
         </div>
       `;
+
+      // Initialize ratio bar chart
+      const likeBar = factItem.querySelector('.fc-vote-bar-like');
+      const dislikeBar = factItem.querySelector('.fc-vote-bar-dislike');
+      if (likeBar && dislikeBar) {
+        const likes = data.likes || 0;
+        const dislikes = data.dislikes || 0;
+        const total = likes + dislikes;
+        if (total === 0) {
+          likeBar.style.width = '50%';
+          likeBar.style.background = 'rgba(255, 255, 255, 0.1)';
+          dislikeBar.style.width = '50%';
+          dislikeBar.style.background = 'rgba(255, 255, 255, 0.1)';
+        } else {
+          const likePct = (likes / total) * 100;
+          const dislikePct = (dislikes / total) * 100;
+          likeBar.style.width = `${likePct}%`;
+          likeBar.style.background = '#10b981';
+          dislikeBar.style.width = `${dislikePct}%`;
+          dislikeBar.style.background = '#ef4444';
+        }
+      }
 
       // If user has already voted, apply active classes
       if (userVotes[factCheckId] === 'like') {
@@ -1154,6 +1508,9 @@
       if (userVotes[factCheckId] === 'dislike') {
         const btn = factItem.querySelector('.fc-vote-dislike');
         if (btn) btn.classList.add('fc-voted-dislike');
+      }
+      if (userReasonVotes[factCheckId]) {
+        setReasonVotedState(factItem, true);
       }
 
       // Apply initial filter visibility display
@@ -1353,6 +1710,39 @@
         const dislikeCountEl = card.querySelector('.fc-dislike-count');
         if (likeCountEl) likeCountEl.textContent = likes;
         if (dislikeCountEl) dislikeCountEl.textContent = dislikes;
+
+        // Update the ratio bar chart dynamically
+        const likeBar = card.querySelector('.fc-vote-bar-like');
+        const dislikeBar = card.querySelector('.fc-vote-bar-dislike');
+        if (likeBar && dislikeBar) {
+          const total = likes + dislikes;
+          if (total === 0) {
+            likeBar.style.width = '50%';
+            likeBar.style.background = 'rgba(255, 255, 255, 0.1)';
+            dislikeBar.style.width = '50%';
+            dislikeBar.style.background = 'rgba(255, 255, 255, 0.1)';
+          } else {
+            const likePct = (likes / total) * 100;
+            const dislikePct = (dislikes / total) * 100;
+            likeBar.style.width = `${likePct}%`;
+            likeBar.style.background = '#10b981';
+            dislikeBar.style.width = `${dislikePct}%`;
+            dislikeBar.style.background = '#ef4444';
+          }
+        }
+      }
+    });
+
+    // Handle card deletion requests from admin dashboard
+    socket.on('factcheck_delete', ({ factCheckId }) => {
+      const card = document.getElementById(factCheckId);
+      if (card && typeof card.remove === 'function') {
+        try {
+          card.remove();
+          console.log(`[Socket] Admin requested deletion of card: ${factCheckId}`);
+        } catch (err) {
+          console.error('[Fact-Check Overlay] Error deleting card:', err);
+        }
       }
     });
 
@@ -1498,16 +1888,67 @@
               <div class="fc-fact-text">${parsed.analysis}</div>
               
               <!-- Like/Dislike Vote Bar -->
-              <div class="fc-card-votes">
+              <div class="fc-card-votes" style="position: relative;">
                 <button class="fc-vote-btn fc-vote-like" data-id="${factCheckId}">
                   👍 <span class="fc-like-count">${data.likes || 0}</span>
                 </button>
                 <button class="fc-vote-btn fc-vote-dislike" data-id="${factCheckId}">
                   👎 <span class="fc-dislike-count">${data.dislikes || 0}</span>
                 </button>
+                <button class="fc-vote-btn fc-vote-reason-btn" data-id="${factCheckId}">
+                  🗳️ โหวตเหตุผล
+                </button>
+                
+                <!-- Dislike Popover Options Panel -->
+                <div class="fc-dislike-popover" id="popover-${factCheckId}">
+                  <div class="fc-popover-title">เหตุผลที่โหวตไม่ถูกต้อง:</div>
+                  <label class="fc-popover-option">
+                    <input type="radio" name="reason-${factCheckId}" value="inaccurate" checked> ข้อมูลคลาดเคลื่อน
+                  </label>
+                  <label class="fc-popover-option">
+                    <input type="radio" name="reason-${factCheckId}" value="missing_context"> บริบทไม่ครบถ้วน
+                  </label>
+                  <label class="fc-popover-option">
+                    <input type="radio" name="reason-${factCheckId}" value="wrong_analysis"> AI วิเคราะห์บิดเบือน
+                  </label>
+                  <textarea class="fc-popover-comment" id="comment-${factCheckId}" placeholder="ความคิดเห็นเพิ่มเติม..."></textarea>
+                  <div class="fc-popover-actions">
+                    <button class="fc-popover-btn fc-btn-cancel-reason-vote" data-id="${factCheckId}">ยกเลิกโหวตเดิม</button>
+                    <button class="fc-popover-btn fc-popover-btn-cancel">ยกเลิก</button>
+                    <button class="fc-popover-btn fc-popover-btn-submit fc-btn-submit-vote" data-id="${factCheckId}">ส่งโหวต</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Mini Horizontal Bar Chart -->
+              <div class="fc-vote-chart" id="chart-${factCheckId}">
+                <div class="fc-vote-bar-like" style="width: 50%; background: rgba(255, 255, 255, 0.1);"></div>
+                <div class="fc-vote-bar-dislike" style="width: 50%; background: rgba(255, 255, 255, 0.1);"></div>
               </div>
             `;
             
+            // Initialize ratio bar chart
+            const likeBar = currentStreamingItem.querySelector('.fc-vote-bar-like');
+            const dislikeBar = currentStreamingItem.querySelector('.fc-vote-bar-dislike');
+            if (likeBar && dislikeBar) {
+              const likes = data.likes || 0;
+              const dislikes = data.dislikes || 0;
+              const total = likes + dislikes;
+              if (total === 0) {
+                likeBar.style.width = '50%';
+                likeBar.style.background = 'rgba(255, 255, 255, 0.1)';
+                dislikeBar.style.width = '50%';
+                dislikeBar.style.background = 'rgba(255, 255, 255, 0.1)';
+              } else {
+                const likePct = (likes / total) * 100;
+                const dislikePct = (dislikes / total) * 100;
+                likeBar.style.width = `${likePct}%`;
+                likeBar.style.background = '#10b981';
+                dislikeBar.style.width = `${dislikePct}%`;
+                dislikeBar.style.background = '#ef4444';
+              }
+            }
+
             // Apply initial filter visibility display
             if (verdictClass === 'fact') {
               currentStreamingItem.style.display = state.showFact ? 'block' : 'none';
@@ -1525,6 +1966,9 @@
             if (userVotes[factCheckId] === 'dislike') {
               const btn = currentStreamingItem.querySelector('.fc-vote-dislike');
               if (btn) btn.classList.add('fc-voted-dislike');
+            }
+            if (userReasonVotes[factCheckId]) {
+              setReasonVotedState(currentStreamingItem, true);
             }
             
             currentStreamingItem = null;
