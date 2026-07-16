@@ -1,0 +1,32 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "search": "node services/search-server.js",
+    "seed": "node db/seed.js && node db/seed-relationships.js && node db/migrate-data.js",
+    "migrate": "node -e \"import('./db/client.js').then(m => m.runAllMigrations())\"",
+    "backup": "node scripts/backup.js",
+    "benchmark:vod": "node scripts/run-vod-benchmark.js",
+    "benchmark:vod:report": "node scripts/run-vod-benchmark.js --fixture test/fixtures/vod-benchmark-cases.json --report-dir reports/vod-benchmark",
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@supabase/supabase-js": "^2.110.2",
+    "better-sqlite3": "^12.11.1",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.5.2",
+    "ioredis": "^5.11.1",
+    "socket.io": "^4.8.3",
+    "youtube-transcript": "^1.3.1"
+  }
+}

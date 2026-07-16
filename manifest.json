@@ -1,0 +1,66 @@
+{
+  "manifest_version": 3,
+  "name": "Real-time Video Fact-Check Overlay",
+  "version": "0.1.0",
+  "description": "Transparent overlay for YouTube videos showing real-time fact-checks, context, and live polls.",
+  
+  "permissions": [
+    "activeTab",
+    "storage",
+    "identity",
+    "scripting"
+  ],
+  
+  "host_permissions": [
+    "https://www.youtube.com/*",
+    "https://youtube.com/*",
+    "https://www.googleapis.com/*",
+    "https://firestore.googleapis.com/*"
+  ],
+  
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+  
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*", "https://youtube.com/*"],
+      "js": ["src/lib/socket.io.min.js", "src/content/overlay.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "assets/icon16.png",
+      "48": "assets/icon48.png",
+      "128": "assets/icon128.png"
+    },
+    "default_title": "Fact-Check Overlay Settings"
+  },
+  
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/*", "src/config/*", "src/lib/*"],
+      "matches": ["https://www.youtube.com/*", "https://youtube.com/*"]
+    }
+  ],
+  
+  "icons": {
+    "16": "assets/icon16.png",
+    "48": "assets/icon48.png",
+    "128": "assets/icon128.png"
+  },
+  
+  "oauth2": {
+    "client_id": "127172410306-jv7sgstitmbc9nukriue4o1vvd1oco68.apps.googleusercontent.com",
+    "scopes": [
+      "openid",
+      "https://www.googleapis.com/auth/userinfo.email",
+      "https://www.googleapis.com/auth/userinfo.profile"
+    ]
+  }
+}

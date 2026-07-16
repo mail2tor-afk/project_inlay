@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fact Check Extension</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      width: 320px;
+      min-height: 400px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: #fff;
+      padding: 20px;
+    }
+    
+    .header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    
+    .header h1 {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 4px;
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    
+    .header p {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.6);
+    }
+    
+    /* Auth Section */
+    .auth-section {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    
+    .auth-section.hidden {
+      display: none;
+    }
+    
+    .login-btn {
+      width: 100%;
+      padding: 12px;
+      background: linear-gradient(135deg, #3b82f6, #2563eb);
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    
+    .login-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+    }
+    
+    .login-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+    
+    .login-icon {
+      font-size: 18px;
+    }
+    
+    /* User Info */
+    .user-info {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .user-info.hidden {
+      display: none;
+    }
+    
+    .user-avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid rgba(59, 130, 246, 0.5);
+    }
+    
+    .user-details {
+      flex: 1;
+      overflow: hidden;
+    }
+    
+    .user-name {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    .user-email {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.6);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    .guest-badge {
+      display: inline-block;
+      background: rgba(255, 193, 7, 0.2);
+      color: #ffc107;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-left: 6px;
+    }
+    
+    .guest-badge.hidden {
+      display: none;
+    }
+    
+    .logout-btn {
+      padding: 8px 12px;
+      background: rgba(255, 59, 48, 0.2);
+      border: 1px solid rgba(255, 59, 48, 0.3);
+      border-radius: 6px;
+      color: #ff3b30;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    
+    .logout-btn:hover {
+      background: rgba(255, 59, 48, 0.3);
+    }
+    
+    /* Settings Section */
+    .settings-section {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    
+    .settings-title {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: rgba(255, 255, 255, 0.8);
+    }
+    
+    .setting-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .setting-item:last-child {
+      border-bottom: none;
+    }
+    
+    .setting-label {
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.9);
+    }
+    
+    .setting-description {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.5);
+      margin-top: 2px;
+    }
+    
+    /* Toggle Switch */
+    .toggle-switch {
+      position: relative;
+      width: 44px;
+      height: 24px;
+    }
+    
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(255, 255, 255, 0.2);
+      transition: 0.3s;
+      border-radius: 24px;
+    }
+    
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: 0.3s;
+      border-radius: 50%;
+    }
+    
+    input:checked + .toggle-slider {
+      background: linear-gradient(135deg, #3b82f6, #2563eb);
+    }
+    
+    input:checked + .toggle-slider:before {
+      transform: translateX(20px);
+    }
+    
+    /* Footer */
+    .footer {
+      margin-top: 20px;
+      text-align: center;
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.4);
+    }
+    
+    .version {
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <div class="header">
+    <h1>🔍 Fact Check Overlay</h1>
+    <p>Real-time video fact-checking</p>
+  </div>
+  
+  <!-- Auth Section (shown when logged out) -->
+  <div id="auth-section" class="auth-section">
+    <p style="margin-bottom: 12px; font-size: 13px; color: rgba(255, 255, 255, 0.8);">
+      Login to access full features
+    </p>
+    <button id="login-btn" class="login-btn">
+      <span class="login-icon">🔐</span>
+      Login with Google
+    </button>
+  </div>
+  
+  <!-- User Info (shown when logged in) -->
+  <div id="user-info" class="user-info hidden">
+    <img id="user-avatar" src="assets/default-avatar.png" alt="User Avatar" class="user-avatar">
+    <div class="user-details">
+      <div class="user-name">
+        <span id="user-name">User</span>
+        <span id="guest-badge" class="guest-badge hidden">GUEST</span>
+      </div>
+      <div id="user-email" class="user-email">email@example.com</div>
+    </div>
+    <button id="logout-btn" class="logout-btn">Logout</button>
+  </div>
+  
+  <!-- Settings Section -->
+  <div class="settings-section">
+    <div class="settings-title">Settings</div>
+    
+    <div class="setting-item">
+      <div>
+        <div class="setting-label">Enable Overlay</div>
+        <div class="setting-description">Show fact-check overlay on videos</div>
+      </div>
+      <label class="toggle-switch">
+        <input type="checkbox" id="overlay-toggle" checked>
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    
+    <div class="setting-item">
+      <div>
+        <div class="setting-label">Auto Fact-Check</div>
+        <div class="setting-description">Automatically check claims</div>
+      </div>
+      <label class="toggle-switch">
+        <input type="checkbox" id="auto-factcheck-toggle" checked>
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+  </div>
+  
+  <!-- Footer -->
+  <div class="footer">
+    <div>Phase 1: The Shell</div>
+    <div class="version">Version 1.0.0</div>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>

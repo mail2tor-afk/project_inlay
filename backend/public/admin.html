@@ -1,0 +1,1781 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fact-Check Prompt Editor & Admin Control Panel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-color: #0b0f19;
+      --panel-bg: rgba(17, 25, 40, 0.65);
+      --panel-border: rgba(255, 255, 255, 0.08);
+      --accent-blue: #3b82f6;
+      --accent-glow: rgba(59, 130, 246, 0.15);
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --font-english: 'Outfit', sans-serif;
+      --font-thai: 'Sarabun', sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.1) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.08) 0px, transparent 50%);
+      color: var(--text-main);
+      font-family: var(--font-thai), var(--font-english);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    header {
+      background: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--panel-border);
+      padding: 16px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-logo {
+      font-size: 24px;
+      background: linear-gradient(135deg, var(--accent-blue), #10b981);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      font-weight: 700;
+      font-family: var(--font-english);
+    }
+
+    .brand-title {
+      font-size: 16px;
+      color: var(--text-muted);
+      font-weight: 400;
+      border-left: 1px solid var(--panel-border);
+      padding-left: 12px;
+    }
+
+    main {
+      flex: 1;
+      max-width: 1400px;
+      width: 100%;
+      margin: 32px auto;
+      padding: 0 32px;
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 24px;
+    }
+
+    @media (max-width: 1024px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .glass-panel {
+      background: var(--panel-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+      position: relative;
+    }
+
+    .full-width {
+      grid-column: 1 / -1;
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--panel-border);
+      padding-bottom: 12px;
+    }
+
+    .panel-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .editor-wrapper {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+    }
+
+    textarea.prompt-editor {
+      width: 100%;
+      min-height: 400px;
+      background: rgba(8, 12, 21, 0.7);
+      border: 1px solid var(--panel-border);
+      border-radius: 10px;
+      color: #38bdf8;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 14px;
+      line-height: 1.6;
+      padding: 16px;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    textarea.prompt-editor:focus {
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+
+    .validation-panel {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 10px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--panel-border);
+      padding: 12px;
+      border-radius: 8px;
+    }
+
+    .val-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .val-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--text-muted);
+      transition: background-color 0.2s, box-shadow 0.2s;
+    }
+
+    .val-item.valid { color: var(--text-main); }
+    .val-item.valid .val-dot {
+      background: var(--success);
+      box-shadow: 0 0 8px var(--success);
+    }
+
+    .val-item.invalid { color: var(--text-muted); }
+    .val-item.invalid .val-dot {
+      background: var(--danger);
+      box-shadow: 0 0 8px var(--danger);
+    }
+
+    .action-row {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+
+    .btn {
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      outline: none;
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--panel-border);
+      color: var(--text-main);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .btn-primary {
+      background: var(--accent-blue);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background: #2563eb;
+      box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
+    }
+
+    .btn-danger {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid var(--danger);
+      color: var(--danger);
+    }
+
+    .btn-danger:hover {
+      background: var(--danger);
+      color: #fff;
+    }
+
+    /* Sandbox Panel Styles */
+    .history-selector-row {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .history-select {
+      background: rgba(8, 12, 21, 0.7);
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      color: var(--text-main);
+      padding: 10px;
+      width: 100%;
+      outline: none;
+      font-size: 13px;
+    }
+
+    .sandbox-fields {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .sandbox-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .sandbox-field label {
+      font-size: 13px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .sandbox-field textarea, .sandbox-field input {
+      background: rgba(8, 12, 21, 0.7);
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      color: var(--text-main);
+      font-size: 13px;
+      line-height: 1.5;
+      padding: 10px;
+      outline: none;
+    }
+
+    .sandbox-field textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    .sandbox-field textarea:focus, .sandbox-field input:focus {
+      border-color: var(--accent-blue);
+    }
+
+    .result-console {
+      background: #06090e;
+      border: 1px solid var(--panel-border);
+      border-radius: 10px;
+      min-height: 150px;
+      padding: 16px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 13px;
+      color: #e2e8f0;
+      white-space: pre-wrap;
+      overflow-y: auto;
+      max-height: 250px;
+    }
+
+    .console-tag {
+      font-weight: bold;
+      color: var(--accent-blue);
+    }
+    .console-verdict-fact {
+      color: var(--success);
+      font-weight: bold;
+    }
+    .console-verdict-false {
+      color: var(--danger);
+      font-weight: bold;
+    }
+    .console-verdict-misleading {
+      color: var(--warning);
+      font-weight: bold;
+    }
+
+    /* RAG & Analytics Styles */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    @media (max-width: 768px) {
+      .dashboard-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .rag-form-box {
+      border: 1px solid var(--panel-border);
+      border-radius: 10px;
+      padding: 16px;
+      background: rgba(255,255,255,0.01);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .admin-table-wrapper {
+      max-height: 300px;
+      overflow-y: auto;
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+    }
+
+    .admin-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      text-align: left;
+    }
+
+    .admin-table th, .admin-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--panel-border);
+    }
+
+    .admin-table th {
+      background: rgba(15, 23, 42, 0.8);
+      color: var(--text-muted);
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .admin-table tr:hover {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    /* Stacked mini bar chart */
+    .admin-vote-bar {
+      display: flex;
+      height: 12px;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 4px;
+      background: rgba(255, 255, 255, 0.05);
+      width: 120px;
+    }
+
+    .bar-inaccurate { background: #3b82f6; }
+    .bar-context { background: #f59e0b; }
+    .bar-analysis { background: #ef4444; }
+    .bar-other { background: #64748b; }
+
+    .chart-legend {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .legend-color {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .comments-log {
+      max-height: 100px;
+      overflow-y: auto;
+      font-size: 11px;
+      color: var(--text-muted);
+      background: rgba(0,0,0,0.2);
+      padding: 6px;
+      border-radius: 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .comment-item {
+      border-bottom: 1px dashed rgba(255,255,255,0.05);
+      padding-bottom: 3px;
+    }
+
+    .audit-log-item {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    .audit-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding-bottom: 12px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .audit-discrepancy-card {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 10px;
+    }
+
+    @media (max-width: 768px) {
+      .audit-discrepancy-card {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .audit-box-realtime {
+      background: rgba(239, 68, 68, 0.04);
+      border: 1px dashed rgba(239, 68, 68, 0.2);
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .audit-box-audited {
+      background: rgba(16, 185, 129, 0.04);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: rgba(15, 23, 42, 0.9);
+      border-left: 4px solid var(--accent-blue);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      border-radius: 4px;
+      color: var(--text-main);
+      padding: 12px 24px;
+      font-size: 14px;
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      z-index: 1000;
+    }
+
+    .toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    .toast.success { border-left-color: var(--success); }
+    .toast.error { border-left-color: var(--danger); }
+    .toast.warning { border-left-color: var(--warning); }
+
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-radius: 50%;
+      border-top-color: #fff;
+      animation: spin 1s ease-in-out infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Transcript Modal */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.65);
+      z-index: 2000;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .modal-backdrop.show {
+      display: flex;
+    }
+
+    .modal-panel {
+      background: var(--panel-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      width: min(720px, 100%);
+      max-height: 80vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--panel-border);
+    }
+
+    .modal-title {
+      font-weight: 600;
+      font-size: 15px;
+    }
+
+    .modal-close-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 18px;
+      cursor: pointer;
+      line-height: 1;
+    }
+
+    .modal-close-btn:hover {
+      color: var(--text-main);
+    }
+
+    .modal-body {
+      padding: 20px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--text-main);
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <div class="brand-logo">FactCheck AI</div>
+      <div class="brand-title">แผงควบคุมแอดมินหลังบ้าน (Admin Central Console)</div>
+    </div>
+  </header>
+
+  <main>
+    <!-- Full Width Panel: Active Video Monitor & Transcript Viewer -->
+    <div class="glass-panel" style="grid-column: 1 / -1; margin-bottom: 24px;">
+      <div class="panel-header">
+        <div class="panel-title">📹 ติดตามคลิปวิดีโอที่กำลังวิเคราะห์และแสดงข้อความถอดเสียง (Active Video Rooms & Live Transcripts)</div>
+        <button class="btn btn-secondary" onclick="loadActiveSessions()">🔄 รีเฟรชห้องวิเคราะห์สด</button>
+      </div>
+      <div class="dashboard-grid" style="grid-template-columns: 0.8fr 1.2fr; gap: 20px; padding: 20px;">
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <label style="font-size: 13px; color: var(--text-muted); font-weight: 500;">เลือกคลิปวิดีโอที่กำลังรับชมอยู่ (Active Video Room ID):</label>
+          <select class="history-select" id="active-session-select" style="width: 100%;" onchange="displayActiveTranscript(this)">
+            <option value="">-- กำลังดึงรายการสด... --</option>
+          </select>
+          <div style="font-size: 12px; color: var(--text-muted); line-height: 1.6; margin-top: 6px; background: rgba(255,255,255,0.02); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
+            <div>👥 <strong>จำนวนผู้รับชมสดในห้องนี้:</strong> <span id="active-viewer-count" style="color: var(--accent-blue); font-weight: bold; font-size: 14px;">0</span> คน</div>
+            <div style="margin-top: 4px;">ℹ️ <em>ระบบจะคอยรีเฟรชอัปเดตห้องเคลื่อนไหวและข้อความอัตโนมัติในทุก ๆ 5 วินาที</em></div>
+          </div>
+        </div>
+        <div class="sandbox-field" style="display: flex; flex-direction: column; gap: 8px;">
+          <label style="font-size: 13px; color: var(--text-muted); font-weight: 500;">เนื้อหาคำพูดถอดสดทั้งหมดของคลิปนี้ (Video Live Transcript):</label>
+          <div class="result-console" id="active-transcript-console" style="min-height: 120px; max-height: 120px; background: #06090e; font-family: sans-serif; line-height: 1.6; color: #a2b0c3; overflow-y: auto; padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08); user-select: text;">
+            กรุณาเลือกคลิปวิดีโอที่ต้องการด้านซ้ายเพื่อดูข้อความถอดความทั้งหมด...
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Left Panel: Prompt Editor -->
+    <div class="glass-panel">
+      <div class="panel-header">
+        <div class="panel-title">✍️ ปรับแต่ง Prompt วิเคราะห์</div>
+        <div class="action-row" style="margin: 0;">
+          <button class="btn btn-secondary" id="btn-reset-prompt" title="ล้างกลับไปใช้ค่าเริ่มต้น">กู้คืนค่าเริ่มต้น</button>
+        </div>
+      </div>
+
+      <div class="editor-wrapper">
+        <textarea class="prompt-editor" id="prompt-text" placeholder="กำลังโหลด Prompt..."></textarea>
+      </div>
+
+      <div class="validation-panel">
+        <div class="val-item" id="val-transcript">
+          <div class="val-dot"></div>
+          <span>{TRANSCRIPT}</span>
+        </div>
+        <div class="val-item" id="val-context">
+          <div class="val-dot"></div>
+          <span>{CONTEXT}</span>
+        </div>
+        <div class="val-item" id="val-tag-topic">
+          <div class="val-dot"></div>
+          <span>[TOPIC:]</span>
+        </div>
+        <div class="val-item" id="val-tag-speaker">
+          <div class="val-dot"></div>
+          <span>[SPEAKER:]</span>
+        </div>
+        <div class="val-item" id="val-tag-verdict">
+          <div class="val-dot"></div>
+          <span>[VERDICT:]</span>
+        </div>
+        <div class="val-item" id="val-tag-analysis">
+          <div class="val-dot"></div>
+          <span>[ANALYSIS:]</span>
+        </div>
+      </div>
+
+      <div class="action-row">
+        <button class="btn btn-primary" id="btn-save-prompt">💾 บันทึกและเปิดใช้งานจริง</button>
+      </div>
+    </div>
+
+    <!-- Right Panel: Sandbox Tester -->
+    <div class="glass-panel">
+      <div class="panel-header">
+        <div class="panel-title">🔬 ห้องทดลองวิเคราะห์ (Sandbox)</div>
+      </div>
+
+      <div class="history-selector-row">
+        <label style="font-size: 13px; color: var(--text-muted); font-weight: 500;">เลือกข้อมูลประวัติทดสอบ (History Samples):</label>
+        <select class="history-select" id="sample-select">
+          <option value="">-- กรุณาเลือกประวัติ หรือใส่ข้อมูลทดสอบเอง --</option>
+        </select>
+      </div>
+
+      <div class="sandbox-fields">
+        <div class="sandbox-field">
+          <label>RAG Context อ้างอิง (Context):</label>
+          <textarea id="sandbox-context" placeholder="ใส่ประเด็นอ้างอิงอัจฉริยะ (ถ้ามี)..."></textarea>
+        </div>
+        <div class="sandbox-field">
+          <label>ประวัติช่อง (Channel History):</label>
+          <textarea id="sandbox-channel-history" placeholder="ใส่ข้อมูลพื้นหลังของช่อง (ถ้ามี)..."></textarea>
+        </div>
+        <div class="sandbox-field">
+          <label>ข้อความถอดเสียงต้นทาง (Transcript Chunk):</label>
+          <textarea id="sandbox-transcript" placeholder="ใส่ข้อความคำพูดที่นี่..."></textarea>
+        </div>
+      </div>
+
+      <div class="action-row">
+        <button class="btn btn-primary" id="btn-run-test" style="width: 100%;">
+          ⚡ เริ่มการทดสอบ (Run Sandbox Test)
+        </button>
+      </div>
+
+      <div class="sandbox-field">
+        <label>ผลลัพธ์การประมวลผล (Test Output):</label>
+        <div class="result-console" id="test-output">รอกดทดสอบระบบ...</div>
+      </div>
+    </div>
+
+    <!-- Full Width Panel: RAG Database Management -->
+    <div class="glass-panel full-width">
+      <div class="panel-header">
+        <div class="panel-title">📚 จัดการคลังความรู้ RAG (RAG Database Management)</div>
+        <button class="btn btn-primary" id="btn-trigger-scrape" style="padding: 6px 12px; font-size: 12px;">
+          ⚡ ดึงข่าวสารอัตโนมัติ (Cofact RSS Scrape)
+        </button>
+      </div>
+
+      <div class="dashboard-grid">
+        <!-- RAG Input Forms -->
+        <div class="rag-form-box">
+          <div style="font-weight: 600; font-size: 14px; border-bottom: 1px solid var(--panel-border); padding-bottom: 6px;">
+            📝 เพิ่มข้อเท็จจริงแบบพิมพ์สั้น
+          </div>
+          <div class="sandbox-field">
+            <label>หัวข้อข้อมูล (Topic Title):</label>
+            <input type="text" id="rag-quick-title" placeholder="เช่น มติเลื่อนจ่ายงบเยียวยา...">
+          </div>
+          <div class="sandbox-field">
+            <label>เนื้อหารายละเอียด (Claim Content):</label>
+            <textarea id="rag-quick-content" placeholder="ใส่เนื้อหาข้อเท็จจริงที่เป็นข้อยืนยันอ้างอิง..." style="min-height: 60px;"></textarea>
+          </div>
+          <button class="btn btn-primary" id="btn-add-quick-fact" style="justify-content: center;">บันทึกข้อเท็จจริง</button>
+        </div>
+
+        <div class="rag-form-box">
+          <div style="font-weight: 600; font-size: 14px; border-bottom: 1px solid var(--panel-border); padding-bottom: 6px;">
+            🔗 แปะลิงก์สำนักข่าว
+          </div>
+          <div class="sandbox-field">
+            <label>URL ของบทความ / ลิงก์ข่าว:</label>
+            <input type="url" id="rag-paste-url" placeholder="https://example-news-site.com/news-article-1">
+          </div>
+          <p style="font-size: 11px; color: var(--text-muted); line-height: 1.4;">
+            ระบบจะส่งบอทเข้าไป Scrape สกัดข้อมูลข้อความเฉพาะ Tag เนื้อหาข่าวหลัก และนำไปสร้างเวกเตอร์ (Embedding) ให้อัตโนมัติโดยไม่ต้องใส่เนื้อหาเอง
+          </p>
+          <button class="btn btn-primary" id="btn-add-news-link" style="justify-content: center;">ขูดดึงลิงก์ข่าว</button>
+        </div>
+      </div>
+
+      <!-- Current RAG List -->
+      <div style="margin-top: 10px;">
+        <label style="font-size: 13px; color: var(--text-muted); font-weight: 500; display: block; margin-bottom: 8px;">
+          รายการเอกสารคลังความรู้ RAG ปัจจุบัน:
+        </label>
+        <div class="admin-table-wrapper">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>ประเภท</th>
+                <th>หัวเรื่องเอกสาร (Title)</th>
+                <th>ข้อมูลย่อหน้า (Content Sample)</th>
+                <th>บันทึกเมื่อ</th>
+                <th style="text-align: right;">การจัดการ</th>
+              </tr>
+            </thead>
+            <tbody id="rag-docs-tbody">
+              <tr>
+                <td colspan="5" style="text-align: center; color: var(--text-muted);">กำลังโหลดคลังความรู้...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Full Width Panel: Live Sessions -->
+    <div class="glass-panel full-width">
+      <div class="panel-header">
+        <div class="panel-title">📺 เซสชันที่กำลังรับชม (Live Sessions)</div>
+        <button class="btn btn-secondary" onclick="loadActiveSessions()">🔄 รีเฟรชรายการ</button>
+      </div>
+
+      <div class="admin-table-wrapper" style="max-height: 350px;">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Video ID</th>
+              <th>ชื่อคลิป</th>
+              <th>ช่อง</th>
+              <th>ผู้ชม</th>
+              <th style="text-align: right;">การจัดการ</th>
+            </tr>
+          </thead>
+          <tbody id="live-sessions-tbody">
+            <tr>
+              <td colspan="5" style="text-align: center; color: var(--text-muted);">กำลังโหลดเซสชัน...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Full Width Panel: Voting Analytics -->
+    <div class="glass-panel full-width">
+      <div class="panel-header">
+        <div class="panel-title">📊 สถิติประชามติและการร้องเรียนความเห็นต่าง (Voting Analytics)</div>
+        <button class="btn btn-secondary" onclick="fetchVotingAnalytics()">🔄 โหลดสถิติใหม่</button>
+      </div>
+
+      <div style="display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap;">
+        <select id="voting-filter-channel" class="history-select" style="width: 220px;" onchange="onVotingChannelFilterChange()">
+          <option value="">-- ทุกช่อง --</option>
+        </select>
+        <select id="voting-filter-video" class="history-select" style="width: 280px;" onchange="renderVotingAnalyticsTable()">
+          <option value="">-- ทุกคลิป --</option>
+        </select>
+      </div>
+
+      <div class="admin-table-wrapper" style="max-height: 400px;">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>คลิปวิดีโอ (Video / Channel)</th>
+              <th>หัวข้อร้องเรียน (Topic)</th>
+              <th>คำสรุปเรียลไทม์ (Verdict)</th>
+              <th>👍 / 👎</th>
+              <th>สัดส่วนข้อร้องเรียน (Dislike Reasons)</th>
+              <th>ความคิดเห็นจากผู้ชม (Comments)</th>
+              <th style="text-align: right;">การดำเนินการ (Actions)</th>
+            </tr>
+          </thead>
+          <tbody id="voting-analytics-tbody">
+            <tr>
+              <td colspan="6" style="text-align: center; color: var(--text-muted);">กำลังโหลดข้อมูลสถิติโหวต...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      
+      <div class="chart-legend">
+        <strong>คำอธิบายแถบสัดส่วน:</strong>
+        <div class="legend-item"><div class="legend-color bar-inaccurate"></div> ข้อมูลคลาดเคลื่อน</div>
+        <div class="legend-item"><div class="legend-color bar-context"></div> บริบทไม่ครบถ้วน</div>
+        <div class="legend-item"><div class="legend-color bar-analysis"></div> AI วิเคราะห์บิดเบือน</div>
+        <div class="legend-item"><div class="legend-color bar-other"></div> อื่นๆ</div>
+      </div>
+    </div>
+
+    <!-- Full Width Panel: Post-Video Audit Logs -->
+    <div class="glass-panel full-width">
+      <div class="panel-header">
+        <div class="panel-title">📋 รายงานความผิดพลาดหลังจบคลิป (Post-Video Audit Logs)</div>
+        <button class="btn btn-secondary" onclick="fetchAuditReports()">🔄 โหลดรายงานใหม่</button>
+      </div>
+      <div id="audit-logs-container">
+        <div style="text-align: center; color: var(--text-muted); padding: 24px;">
+          กำลังโหลดประวัติรายงานการตรวจทาน AI...
+        </div>
+      </div>
+    </div>
+
+    <!-- Full Width Panel: Priority Channels -->
+    <div class="glass-panel full-width">
+      <div class="panel-header">
+        <div class="panel-title">⭐ ช่องที่ให้ความสำคัญ (Priority Channels)</div>
+        <button class="btn btn-secondary" onclick="fetchPriorityChannels()">🔄 โหลดรายการใหม่</button>
+      </div>
+
+      <div class="rag-form-box" style="margin-bottom: 12px;">
+        <div class="sandbox-field">
+          <label>ชื่อช่อง YouTube:</label>
+          <input type="text" id="priority-channel-input" placeholder="เช่น Bright TV">
+        </div>
+        <button class="btn btn-primary" id="btn-add-priority-channel" style="justify-content: center;">เพิ่มช่องสำคัญ</button>
+      </div>
+
+      <div class="admin-table-wrapper">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>ชื่อช่อง</th>
+              <th>เพิ่มเมื่อ</th>
+              <th>สถานะข้อมูล</th>
+              <th style="text-align: right;">การจัดการ</th>
+            </tr>
+          </thead>
+          <tbody id="priority-channels-tbody">
+            <tr>
+              <td colspan="4" style="text-align: center; color: var(--text-muted);">กำลังโหลด...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <div class="toast" id="toast-el">ข้อความแจ้งเตือน</div>
+
+  <div class="modal-backdrop" id="transcript-modal-backdrop" onclick="if (event.target === this) closeTranscriptModal();">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <div class="modal-title" id="transcript-modal-title">Transcript</div>
+        <button class="modal-close-btn" onclick="closeTranscriptModal()" title="ปิดหน้าต่าง">✕</button>
+      </div>
+      <div class="modal-body" id="transcript-modal-body"></div>
+    </div>
+  </div>
+
+  <script>
+    let defaultPrompt = '';
+    let currentSavedPrompt = '';
+    let activeSessionsData = [];
+
+    // Escape HTML entities before inserting external strings (YouTube titles etc.) into the DOM
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    // Elements
+    const promptTextEl = document.getElementById('prompt-text');
+    const btnSaveEl = document.getElementById('btn-save-prompt');
+    const btnResetEl = document.getElementById('btn-reset-prompt');
+    
+    const sampleSelectEl = document.getElementById('sample-select');
+    const sandboxContextEl = document.getElementById('sandbox-context');
+    const sandboxChannelHistoryEl = document.getElementById('sandbox-channel-history');
+    const sandboxTranscriptEl = document.getElementById('sandbox-transcript');
+    const btnRunTestEl = document.getElementById('btn-run-test');
+    const testOutputEl = document.getElementById('test-output');
+    const toastEl = document.getElementById('toast-el');
+    const auditContainerEl = document.getElementById('audit-logs-container');
+
+    const ragDocsTbody = document.getElementById('rag-docs-tbody');
+    const btnAddQuickFact = document.getElementById('btn-add-quick-fact');
+    const btnAddNewsLink = document.getElementById('btn-add-news-link');
+    const btnTriggerScrape = document.getElementById('btn-trigger-scrape');
+    const votingAnalyticsTbody = document.getElementById('voting-analytics-tbody');
+    const liveSessionsTbody = document.getElementById('live-sessions-tbody');
+    const transcriptModalBackdrop = document.getElementById('transcript-modal-backdrop');
+    const transcriptModalTitle = document.getElementById('transcript-modal-title');
+    const transcriptModalBody = document.getElementById('transcript-modal-body');
+
+    // Validation Check DOM elements
+    const valTranscript = document.getElementById('val-transcript');
+    const valContext = document.getElementById('val-context');
+    const valTagTopic = document.getElementById('val-tag-topic');
+    const valTagSpeaker = document.getElementById('val-tag-speaker');
+    const valTagVerdict = document.getElementById('val-tag-verdict');
+    const valTagAnalysis = document.getElementById('val-tag-analysis');
+
+    // Fetch Initial Prompt State
+    async function fetchPrompt() {
+      try {
+        const res = await fetch('/api/prompt');
+        const data = await res.json();
+        
+        defaultPrompt = data.defaultPrompt;
+        currentSavedPrompt = data.currentPrompt;
+        
+        promptTextEl.value = currentSavedPrompt;
+        validatePrompt(currentSavedPrompt);
+      } catch (err) {
+        showToast('โหลดข้อมูล Prompt ล้มเหลว', 'error');
+      }
+    }
+
+    // Fetch History Samples
+    async function fetchHistorySamples() {
+      try {
+        const res = await fetch('/api/factchecks/history-samples');
+        const samples = await res.json();
+        
+        sampleSelectEl.innerHTML = '<option value="">-- กรุณาเลือกประวัติ หรือใส่ข้อมูลทดสอบเอง --</option>';
+        
+        samples.forEach(item => {
+          const date = new Date(item.timestamp).toLocaleTimeString();
+          const cleanText = item.transcript.substring(0, 50) + '...';
+          const option = document.createElement('option');
+          option.value = item.id;
+          option.textContent = `[${date}] ${cleanText}`;
+          option.dataset.transcript = item.transcript;
+          option.dataset.context = item.context || '';
+          sampleSelectEl.appendChild(option);
+        });
+      } catch (err) {
+        console.error('Failed to load history samples:', err);
+      }
+    }
+
+    // Fetch RAG Documents
+    async function fetchRagDocuments() {
+      try {
+        const res = await fetch('/api/rag/documents');
+        const docs = await res.json();
+        
+        if (docs.length === 0) {
+          ragDocsTbody.innerHTML = `
+            <tr>
+              <td colspan="5" style="text-align: center; color: var(--text-muted);">📚 คลังความรู้ RAG ยังว่างเปล่า ลองอัปโหลดข้อมูล หรือกดปุ่มดึงข่าวอัตโนมัติได้เลย</td>
+            </tr>
+          `;
+          return;
+        }
+
+        ragDocsTbody.innerHTML = '';
+        docs.forEach(doc => {
+          const tr = document.createElement('tr');
+          const dateStr = new Date(doc.createdAt).toLocaleString('th-TH');
+          
+          let badgeColor = '#3b82f6';
+          if (doc.type === 'quick-fact') badgeColor = '#10b981';
+          if (doc.type === 'auto-scraper') badgeColor = '#8b5cf6';
+
+          tr.innerHTML = `
+            <td>
+              <span style="background: ${badgeColor}; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; color: #fff;">
+                ${doc.type}
+              </span>
+            </td>
+            <td style="font-weight: 500;">${doc.title}</td>
+            <td style="max-width: 350px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${doc.content}">
+              ${doc.content}
+            </td>
+            <td style="color: var(--text-muted); font-size: 11px;">${dateStr}</td>
+            <td style="text-align: right;">
+              <button class="btn btn-danger" style="padding: 4px 8px; font-size: 11px;" onclick="deleteRagDoc('${doc.id}')">ลบ</button>
+            </td>
+          `;
+          ragDocsTbody.appendChild(tr);
+        });
+      } catch (err) {
+        console.error('Failed to load RAG documents:', err);
+      }
+    }
+
+    // Priority Channels
+    let priorityChannelsData = [];
+
+    async function fetchPriorityChannels() {
+      try {
+        const res = await fetch('/api/priority-channels');
+        priorityChannelsData = await res.json();
+        const tbody = document.getElementById('priority-channels-tbody');
+
+        if (!Array.isArray(priorityChannelsData) || priorityChannelsData.length === 0) {
+          tbody.innerHTML = `
+            <tr>
+              <td colspan="4" style="text-align: center; color: var(--text-muted);">ยังไม่มีช่องที่ตั้งไว้เป็นช่องสำคัญ</td>
+            </tr>
+          `;
+          return;
+        }
+
+        tbody.innerHTML = '';
+        priorityChannelsData.forEach((ch, index) => {
+          const tr = document.createElement('tr');
+          const dateStr = new Date(ch.addedAt).toLocaleString('th-TH');
+          const badge = ch.hasData
+            ? `<span style="background:#10b981;color:#fff;padding:2px 6px;border-radius:4px;font-size:11px;">มีข้อมูลแล้ว (${ch.videoCount} คลิป)</span>`
+            : `<span style="background:#6b7280;color:#fff;padding:2px 6px;border-radius:4px;font-size:11px;">ยังไม่มีข้อมูล</span>`;
+
+          tr.innerHTML = `
+            <td>${escapeHtml(ch.channelName)}</td>
+            <td style="color: var(--text-muted); font-size: 11px;">${dateStr}</td>
+            <td>${badge}</td>
+            <td style="text-align: right;">
+              <button class="btn btn-danger" style="padding: 4px 8px; font-size: 11px;" onclick="deletePriorityChannel(${index})">ลบ</button>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch (err) {
+        console.error('Failed to load priority channels:', err);
+      }
+    }
+
+    async function deletePriorityChannel(index) {
+      const ch = priorityChannelsData[index];
+      if (!ch) return;
+      if (!confirm(`ยืนยันลบ "${ch.channelName}" ออกจากรายการช่องสำคัญ?`)) return;
+      try {
+        const res = await fetch(`/api/priority-channels/${encodeURIComponent(ch.channelName)}`, { method: 'DELETE' });
+        if (res.ok) {
+          showToast('ลบช่องสำคัญเรียบร้อย', 'success');
+          fetchPriorityChannels();
+        } else {
+          showToast('ลบล้มเหลว', 'error');
+        }
+      } catch (err) {
+        showToast('ลบล้มเหลว', 'error');
+      }
+    }
+
+    document.getElementById('btn-add-priority-channel').addEventListener('click', async () => {
+      const input = document.getElementById('priority-channel-input');
+      const name = input.value.trim();
+      if (!name) {
+        showToast('กรุณาใส่ชื่อช่อง', 'warning');
+        return;
+      }
+      try {
+        const res = await fetch('/api/priority-channels', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channelName: name })
+        });
+        if (res.ok) {
+          input.value = '';
+          showToast('เพิ่มช่องสำคัญเรียบร้อย', 'success');
+          fetchPriorityChannels();
+        } else {
+          showToast('เพิ่มล้มเหลว', 'error');
+        }
+      } catch (err) {
+        showToast('เพิ่มล้มเหลว', 'error');
+      }
+    });
+
+    // Delete RAG Document
+    async function deleteRagDoc(id) {
+      if (!confirm('ยืนยันลบประเด็นข้อเท็จจริงนี้ออกจากคลัง RAG?')) return;
+      try {
+        const res = await fetch(`/api/rag/documents/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          showToast('ลบประเด็น RAG เรียบร้อยแล้ว', 'success');
+          fetchRagDocuments();
+        }
+      } catch (err) {
+        showToast('ลบล้มเหลว', 'error');
+      }
+    }
+
+    // Fetch Active Live Sessions
+    async function loadActiveSessions() {
+      try {
+        const res = await fetch('/api/active-sessions');
+        const sessions = await res.json();
+        activeSessionsData = Array.isArray(sessions) ? sessions : [];
+
+        // Update Top Dropdown Panel
+        const selectEl = document.getElementById('active-session-select');
+        const selectedValue = selectEl.value;
+        selectEl.innerHTML = '<option value="">-- เลือกห้องวิดีโอเพื่อดูคำถอดเสียงสด --</option>';
+
+        if (activeSessionsData.length === 0) {
+          selectEl.innerHTML = '<option value="">ไม่มีคลิปวิดีโอที่มีความเคลื่อนไหว</option>';
+          document.getElementById('active-viewer-count').textContent = '0';
+          document.getElementById('active-transcript-console').textContent = 'กรุณาเลือกคลิปวิดีโอที่ต้องการด้านซ้ายเพื่อดูข้อความถอดความทั้งหมด...';
+          
+          liveSessionsTbody.innerHTML = `
+            <tr>
+              <td colspan="5" style="text-align: center; color: var(--text-muted);">ไม่มีผู้ชมออนไลน์ขณะนี้</td>
+            </tr>
+          `;
+          return;
+        }
+
+        activeSessionsData.forEach(session => {
+          const option = document.createElement('option');
+          option.value = session.videoId;
+          option.textContent = `คลิปวิดีโอ: ${session.videoId} (ผู้ชม: ${session.activeViewers})`;
+          selectEl.appendChild(option);
+        });
+
+        if (selectedValue) {
+          selectEl.value = selectedValue;
+          displayActiveTranscript(selectEl);
+        }
+
+        liveSessionsTbody.innerHTML = '';
+        activeSessionsData.forEach((session, index) => {
+          const tr = document.createElement('tr');
+          const videoId = session.videoId || '';
+          const youtubeUrl = `https://youtube.com/watch?v=${encodeURIComponent(videoId)}`;
+          tr.innerHTML = `
+            <td><a href="${youtubeUrl}" target="_blank" rel="noopener noreferrer" style="color: var(--accent-blue);">${escapeHtml(videoId)}</a></td>
+            <td>${escapeHtml(session.title || '(ไม่มีข้อมูล metadata)')}</td>
+            <td>${escapeHtml(session.channel || '')}</td>
+            <td>${session.activeViewers || 0}</td>
+            <td style="text-align: right;">
+              <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px;" onclick="openTranscriptModal(${index})">📄 ดู Transcript</button>
+            </td>
+          `;
+          liveSessionsTbody.appendChild(tr);
+        });
+      } catch (err) {
+        console.error('Failed to load active sessions:', err);
+      }
+    }
+
+    function displayActiveTranscript(selectEl) {
+      const videoId = selectEl.value;
+      const session = activeSessionsData.find(s => s.videoId === videoId);
+      const consoleEl = document.getElementById('active-transcript-console');
+      const countEl = document.getElementById('active-viewer-count');
+
+      if (session) {
+        countEl.textContent = session.activeViewers;
+        consoleEl.textContent = session.transcript || 'ไม่มีเนื้อหาทรานสคริปต์คำพูด';
+      } else {
+        countEl.textContent = '0';
+        consoleEl.textContent = 'กรุณาเลือกคลิปวิดีโอที่ต้องการด้านซ้ายเพื่อดูข้อความถอดความทั้งหมด...';
+      }
+    }
+
+    // Transcript Modal (textContent = XSS-safe insertion)
+    function openTranscriptModal(index) {
+      const session = activeSessionsData[index];
+      if (!session) return;
+
+      let transcriptText = '';
+      if (Array.isArray(session.transcript)) {
+        transcriptText = session.transcript.map(seg => (seg && seg.text) ? seg.text : '').join(' ');
+      } else if (typeof session.transcript === 'string') {
+        transcriptText = session.transcript;
+      }
+
+      transcriptModalTitle.textContent = session.title || session.videoId || 'Transcript';
+      transcriptModalBody.textContent = transcriptText || 'ไม่มี transcript';
+      transcriptModalBackdrop.classList.add('show');
+    }
+
+    function closeTranscriptModal() {
+      transcriptModalBackdrop.classList.remove('show');
+    }
+
+    // Fetch Voting Analytics
+    let votingAnalyticsData = [];
+
+    async function fetchVotingAnalytics() {
+      try {
+        const res = await fetch('/api/factchecks/voting-analytics');
+        votingAnalyticsData = await res.json();
+        populateVotingFilters();
+        renderVotingAnalyticsTable();
+      } catch (err) {
+        console.error('Failed to fetch voting analytics:', err);
+      }
+    }
+
+    // เติม dropdown เลือกช่อง/คลิป จากข้อมูลที่โหลดมา (คลิปกรองตามช่องที่เลือกไว้)
+    function populateVotingFilters() {
+      const channelSelect = document.getElementById('voting-filter-channel');
+      const videoSelect = document.getElementById('voting-filter-video');
+      const selectedChannel = channelSelect.value;
+      const selectedVideo = videoSelect.value;
+
+      const channels = [...new Set(votingAnalyticsData.map(v => v.videoChannel).filter(Boolean))].sort();
+      channelSelect.innerHTML = '<option value="">-- ทุกช่อง --</option>' +
+        channels.map(ch => `<option value="${escapeHtml(ch)}">${escapeHtml(ch)}</option>`).join('');
+      if (channels.includes(selectedChannel)) channelSelect.value = selectedChannel;
+
+      populateVotingVideoFilter(channelSelect.value, selectedVideo);
+    }
+
+    function populateVotingVideoFilter(channelFilter, keepSelectedVideo) {
+      const videoSelect = document.getElementById('voting-filter-video');
+      const videosInScope = votingAnalyticsData.filter(v => !channelFilter || v.videoChannel === channelFilter);
+      const uniqueVideos = [...new Map(videosInScope.map(v => [v.videoId, v.videoTitle])).entries()];
+
+      videoSelect.innerHTML = '<option value="">-- ทุกคลิป --</option>' +
+        uniqueVideos.map(([id, title]) => `<option value="${escapeHtml(id)}">${escapeHtml(title)}</option>`).join('');
+      if (uniqueVideos.some(([id]) => id === keepSelectedVideo)) videoSelect.value = keepSelectedVideo;
+    }
+
+    function onVotingChannelFilterChange() {
+      const channelSelect = document.getElementById('voting-filter-channel');
+      populateVotingVideoFilter(channelSelect.value, '');
+      renderVotingAnalyticsTable();
+    }
+
+    function renderVotingAnalyticsTable() {
+      const channelFilter = document.getElementById('voting-filter-channel').value;
+      const videoFilter = document.getElementById('voting-filter-video').value;
+
+      const votes = votingAnalyticsData.filter(v =>
+        (!channelFilter || v.videoChannel === channelFilter) &&
+        (!videoFilter || v.videoId === videoFilter)
+      );
+
+      if (votes.length === 0) {
+        votingAnalyticsTbody.innerHTML = `
+          <tr>
+            <td colspan="7" style="text-align: center; color: var(--text-muted);">📊 ไม่มีคะแนนโหวตที่ตรงกับตัวกรองที่เลือก</td>
+          </tr>
+        `;
+        return;
+      }
+
+      votingAnalyticsTbody.innerHTML = '';
+      votes.forEach(item => {
+        const index = votingAnalyticsData.indexOf(item);
+        const tr = document.createElement('tr');
+        const totalDislikes = item.dislikes || 0;
+
+        // Generate reasons chart widths
+        let inaccuratePct = 0;
+        let contextPct = 0;
+        let analysisPct = 0;
+        let otherPct = 0;
+
+        if (totalDislikes > 0) {
+          inaccuratePct = ((item.reasons.inaccurate || 0) / totalDislikes) * 100;
+          contextPct = ((item.reasons.missing_context || 0) / totalDislikes) * 100;
+          analysisPct = ((item.reasons.wrong_analysis || 0) / totalDislikes) * 100;
+          otherPct = ((item.reasons.other || 0) / totalDislikes) * 100;
+        }
+
+        // Build Comments Logs
+        let commentsHtml = '<div style="color: var(--text-muted);">ไม่มีความคิดเห็นอื่น</div>';
+        if (item.comments && item.comments.length > 0) {
+          commentsHtml = `<div class="comments-log">`;
+          item.comments.forEach(c => {
+            commentsHtml += `<div class="comment-item">• ${escapeHtml(c.text)}</div>`;
+          });
+          commentsHtml += `</div>`;
+        }
+
+        const youtubeUrl = `https://youtube.com/watch?v=${encodeURIComponent(item.videoId || '')}`;
+
+        tr.innerHTML = `
+          <td style="max-width: 180px;">
+            <a href="${youtubeUrl}" target="_blank" rel="noopener noreferrer" style="color: var(--accent-blue); font-weight: 600; word-break: break-word;">${escapeHtml(item.videoTitle || item.videoId)}</a><br>
+            <span style="font-size: 10px; color: var(--text-muted)">${escapeHtml(item.videoChannel || '')}</span>
+          </td>
+          <td><strong>${escapeHtml(item.topic)}</strong><br><span style="font-size: 10px; color: var(--text-muted)">ID: ${escapeHtml(item.factCheckId)}</span></td>
+          <td><span class="console-verdict-${escapeHtml((item.realtimeVerdict || '').toLowerCase())}">${escapeHtml(item.realtimeVerdict)}</span></td>
+          <td>👍 <span style="color: var(--success); font-weight: bold;">${item.likes || 0}</span> / 👎 <span style="color: var(--danger); font-weight: bold;">${item.dislikes || 0}</span></td>
+          <td>
+            <div class="admin-vote-bar">
+              <div class="bar-inaccurate" style="width: ${inaccuratePct}%" title="คลาดเคลื่อน: ${item.reasons.inaccurate || 0}"></div>
+              <div class="bar-context" style="width: ${contextPct}%" title="บริบทไม่ครบ: ${item.reasons.missing_context || 0}"></div>
+              <div class="bar-analysis" style="width: ${analysisPct}%" title="วิเคราะห์บิดเบือน: ${item.reasons.wrong_analysis || 0}"></div>
+              <div class="bar-other" style="width: ${otherPct}%" title="อื่นๆ: ${item.reasons.other || 0}"></div>
+            </div>
+            <span style="font-size: 10px; color: var(--text-muted)">สัดส่วนเห็นต่าง (${totalDislikes} โหวต)</span>
+          </td>
+          <td style="max-width: 250px;">${commentsHtml}</td>
+          <td style="text-align: right; vertical-align: middle;">
+            <div style="display: flex; gap: 6px; justify-content: flex-end;">
+              <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px;" onclick="loadClaimToSandbox(${index})">🧪 Sandbox</button>
+              <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px;" onclick="resetVotes(${index})">ล้างโหวต</button>
+              <button class="btn btn-danger" style="padding: 4px 8px; font-size: 11px;" onclick="deleteRoomCard(${index})">ลบการ์ด</button>
+            </div>
+          </td>
+        `;
+        votingAnalyticsTbody.appendChild(tr);
+      });
+    }
+
+    // Reset Vote Counts
+    async function resetVotes(index) {
+      const factCheckId = votingAnalyticsData[index]?.factCheckId;
+      if (!factCheckId) return;
+      if (!confirm('ยืนยันล้างคะแนนโหวต Like/Dislike และความคิดเห็นสำหรับเรื่องนี้?')) return;
+      try {
+        const res = await fetch('/api/factchecks/votes/reset', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: factCheckId })
+        });
+        if (res.ok) {
+          showToast('ล้างคะแนนโหวตสำเร็จ', 'success');
+          fetchVotingAnalytics();
+        }
+      } catch (err) {
+        showToast('ล้างล้มเหลว', 'error');
+      }
+    }
+
+    // Force Delete Live Room Card
+    async function deleteRoomCard(index) {
+      const factCheckId = votingAnalyticsData[index]?.factCheckId;
+      if (!factCheckId) return;
+      if (!confirm('ยืนยันลบการ์ดใบนี้ออกจากการรับชมและห้องสด (ผู้ชมทุกคนจะไม่เห็นการ์ดนี้อีก)?')) return;
+      try {
+        const res = await fetch('/api/factchecks/state/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: factCheckId })
+        });
+        if (res.ok) {
+          showToast('ถอดถอนและส่งสัญญาณลบการ์ดเรียบร้อย', 'success');
+          fetchVotingAnalytics();
+        }
+      } catch (err) {
+        showToast('ลบล้มเหลว', 'error');
+      }
+    }
+
+    // Quick prefill topic search in Sandbox
+    function loadClaimToSandbox(index) {
+      const topic = votingAnalyticsData[index]?.topic;
+      if (!topic) return;
+      sandboxTranscriptEl.value = `ประเด็นเกี่ยวกับ: ${topic}`;
+      sandboxContextEl.value = `บทความความรู้เกี่ยวกับเรื่อง ${topic} ดังนี้...`;
+      showToast(`โหลดประเด็น "${topic}" ลง Sandbox แล้ว`, 'success');
+      // Scroll to Sandbox
+      document.getElementById('sandbox-context').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // Add Quick Fact
+    btnAddQuickFact.addEventListener('click', async () => {
+      const title = document.getElementById('rag-quick-title').value.trim();
+      const content = document.getElementById('rag-quick-content').value.trim();
+
+      if (!title || !content) {
+        showToast('กรุณากรอกข้อมูลให้ครบถ้วน', 'warning');
+        return;
+      }
+
+      btnAddQuickFact.disabled = true;
+      btnAddQuickFact.textContent = '⏳ กำลังคำนวณเวกเตอร์...';
+
+      try {
+        const res = await fetch('/api/rag/quick-fact', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, content })
+        });
+        if (res.ok) {
+          showToast('บันทึกข้อเท็จจริงลง RAG สำเร็จ!', 'success');
+          document.getElementById('rag-quick-title').value = '';
+          document.getElementById('rag-quick-content').value = '';
+          fetchRagDocuments();
+        } else {
+          showToast('บันทึกล้มเหลว', 'error');
+        }
+      } catch (err) {
+        showToast('เกิดข้อผิดพลาดในการบันทึก', 'error');
+      } finally {
+        btnAddQuickFact.disabled = false;
+        btnAddQuickFact.textContent = 'บันทึกข้อเท็จจริง';
+      }
+    });
+
+    // Paste News URL Link
+    btnAddNewsLink.addEventListener('click', async () => {
+      const url = document.getElementById('rag-paste-url').value.trim();
+      if (!url) {
+        showToast('กรุณากรอก URL ลิงก์ข่าว', 'warning');
+        return;
+      }
+
+      btnAddNewsLink.disabled = true;
+      btnAddNewsLink.textContent = '⏳ กำลังขูดข่าวและถอดความ...';
+
+      try {
+        const res = await fetch('/api/rag/paste-link', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url })
+        });
+        const data = await res.json();
+        
+        if (res.ok) {
+          showToast(`ขูดลิงก์สำเร็จ! สร้างเวกเตอร์ ${data.chunksCreated} ย่อหน้า`, 'success');
+          document.getElementById('rag-paste-url').value = '';
+          fetchRagDocuments();
+        } else {
+          showToast(data.error || 'ขูดดึงลิงก์ล้มเหลว', 'error');
+        }
+      } catch (err) {
+        showToast('เกิดข้อผิดพลาดในการเชื่อมต่อ', 'error');
+      } finally {
+        btnAddNewsLink.disabled = false;
+        btnAddNewsLink.textContent = 'ขูดดึงลิงก์ข่าว';
+      }
+    });
+
+    // Auto Scraper
+    btnTriggerScrape.addEventListener('click', async () => {
+      btnTriggerScrape.disabled = true;
+      btnTriggerScrape.textContent = '⏳ กำลังขูด RSS Feed Cofact...';
+      
+      try {
+        const res = await fetch('/api/rag/trigger-scrape', { method: 'POST' });
+        const data = await res.json();
+        
+        if (res.ok) {
+          showToast(`ดึงข่าวสารใหม่สำเร็จ! นำเข้าระบบ ${data.count} เรื่อง`, 'success');
+          fetchRagDocuments();
+        } else {
+          showToast('ดึงข่าวสารล้มเหลว', 'error');
+        }
+      } catch (err) {
+        showToast('เกิดข้อผิดพลาดระบบขูดข่าว', 'error');
+      } finally {
+        btnTriggerScrape.disabled = false;
+        btnTriggerScrape.textContent = '⚡ ดึงข่าวสารอัตโนมัติ (Cofact RSS Scrape)';
+      }
+    });
+
+    // Fetch Audit Reports
+    async function fetchAuditReports() {
+      try {
+        const res = await fetch('/api/factchecks/audit-reports');
+        const data = await res.json();
+        const reports = Array.isArray(data) ? data : (data.reports || []); // เผื่อ response เก่าที่เป็น array ตรงๆ
+        const totalCount = Array.isArray(data) ? data.length : (data.totalCount ?? reports.length);
+
+        const unresolvedReports = reports.filter(r => !r.resolved);
+
+        if (unresolvedReports.length === 0) {
+          auditContainerEl.innerHTML = `
+            <div style="text-align: center; color: var(--text-muted); padding: 24px; font-size: 14px;">
+              🎉 ยังไม่มีรายงานความผิดพลาดของ AI หรือตรวจสอบความถูกต้องครบถ้วนแล้ว
+            </div>
+          `;
+          return;
+        }
+
+        auditContainerEl.innerHTML = '';
+
+        if (totalCount > reports.length) {
+          const notice = document.createElement('div');
+          notice.style.cssText = 'text-align:center; color: var(--text-muted); font-size:12px; padding: 6px 0 12px;';
+          notice.textContent = `แสดง ${reports.length} รายการล่าสุดจากทั้งหมด ${totalCount} รายการ (รายการเก่ากว่านี้ยังอยู่ในไฟล์ แต่ไม่แสดงที่นี่เพื่อไม่ให้หน้าเว็บช้า)`;
+          auditContainerEl.appendChild(notice);
+        }
+
+        unresolvedReports.forEach(report => {
+          const card = document.createElement('div');
+          card.className = 'audit-log-item';
+
+          const date = new Date(report.auditTimestamp).toLocaleString('th-TH');
+
+          let discrepanciesHtml = '';
+          report.discrepancies.forEach(disc => {
+            discrepanciesHtml += `
+              <div class="audit-discrepancy-card" style="margin-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 12px;">
+                <div class="audit-box-realtime">
+                  <div style="font-weight: 600; color: var(--danger); font-size: 11px; margin-bottom: 6px; text-transform: uppercase;">
+                    🔴 แสดงผลเรียลไทม์ (Real-time AI)
+                  </div>
+                  <div style="font-size: 13px; line-height: 1.5;">
+                    <strong>หัวข้อ:</strong> ${escapeHtml(disc.topic)}<br>
+                    <strong>การตัดสิน:</strong> <span class="console-tag">[${escapeHtml(disc.realtimeVerdict)}]</span><br>
+                    <strong>บทวิเคราะห์:</strong> ${escapeHtml(disc.realtimeAnalysis)}
+                  </div>
+                </div>
+                <div class="audit-box-audited">
+                  <div style="font-weight: 600; color: var(--success); font-size: 11px; margin-bottom: 6px; text-transform: uppercase;">
+                    🟢 ผลการทบทวน (Auditor AI)
+                  </div>
+                  <div style="font-size: 13px; line-height: 1.5;">
+                    <strong>การตัดสินที่ถูกต้อง:</strong> <span class="console-tag" style="color: var(--success)">[${escapeHtml(disc.auditedVerdict)}]</span><br>
+                    <strong>คำอธิบายที่ควรแก้ไข:</strong> ${escapeHtml(disc.auditedAnalysis)}
+                  </div>
+                </div>
+              </div>
+            `;
+          });
+
+          card.innerHTML = `
+            <div class="audit-meta">
+              <span>📹 <strong>Video ID:</strong> ${escapeHtml(report.videoId)} | ⏰ <strong>ทบทวนเมื่อ:</strong> ${escapeHtml(date)}</span>
+              <button class="btn btn-danger" style="padding: 4px 10px; font-size: 12px;" onclick="resolveReport('${escapeHtml(report.id)}')">
+                ✓ ทำเครื่องหมายว่าแก้ไขแล้ว (Dismiss)
+              </button>
+            </div>
+            <div style="font-size: 14px; font-weight: 600; color: var(--text-main);">
+              พบข้อขัดแย้งจำนวน ${report.discrepancies.length} จุด:
+            </div>
+            ${discrepanciesHtml}
+          `;
+
+          auditContainerEl.appendChild(card);
+        });
+      } catch (err) {
+        console.error('Failed to fetch audit reports:', err);
+      }
+    }
+
+    async function resolveReport(reportId) {
+      if (!confirm('คุณยืนยันว่าแก้ไข/รับทราบรายงานความขัดแย้งนี้แล้วใช่หรือไม่?')) return;
+      try {
+        const res = await fetch('/api/factchecks/audit-reports/resolve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: reportId })
+        });
+        if (res.ok) {
+          showToast('รับทราบรายงานความผิดพลาดเรียบร้อยแล้ว', 'success');
+          fetchAuditReports();
+        } else {
+          showToast('ไม่สามารถอัปเดตรายงานได้', 'error');
+        }
+      } catch (err) {
+        showToast('การส่งข้อมูลล้มเหลว', 'error');
+      }
+    }
+
+    // Live Validator Logic
+    function validatePrompt(text) {
+      const hasTranscript = text.includes('{TRANSCRIPT}');
+      const hasContext = text.includes('{CONTEXT}');
+      const hasTopic = text.includes('[TOPIC:');
+      const hasSpeaker = text.includes('[SPEAKER:');
+      const hasVerdict = text.includes('[VERDICT:');
+      const hasAnalysis = text.includes('[ANALYSIS:');
+
+      updateValDOM(valTranscript, hasTranscript);
+      updateValDOM(valContext, hasContext);
+      updateValDOM(valTagTopic, hasTopic);
+      updateValDOM(valTagSpeaker, hasSpeaker);
+      updateValDOM(valTagVerdict, hasVerdict);
+      updateValDOM(valTagAnalysis, hasAnalysis);
+
+      return hasTranscript && hasContext && hasTopic && hasSpeaker && hasVerdict && hasAnalysis;
+    }
+
+    function updateValDOM(el, isValid) {
+      if (isValid) {
+        el.classList.add('valid');
+        el.classList.remove('invalid');
+      } else {
+        el.classList.add('invalid');
+        el.classList.remove('valid');
+      }
+    }
+
+    function showToast(message, type = 'success') {
+      toastEl.textContent = message;
+      toastEl.className = 'toast show ' + type;
+      setTimeout(() => {
+        toastEl.className = 'toast';
+      }, 3000);
+    }
+
+    function formatConsoleOutput(text) {
+      let formatted = text
+        .replace(/(\[TOPIC:[^\]]*?\])/ig, '<span class="console-tag">$1</span>')
+        .replace(/(\[SPEAKER:[^\]]*?\])/ig, '<span class="console-tag">$1</span>')
+        .replace(/(\[ANALYSIS:[^\]]*?\])/ig, '<span class="console-tag">$1</span>')
+        .replace(/\[VERDICT:\s*(FACT|จริง)\]/ig, '[VERDICT: <span class="console-verdict-fact">FACT</span>]')
+        .replace(/\[VERDICT:\s*(FALSE|เท็จ)\]/ig, '[VERDICT: <span class="console-verdict-false">FALSE</span>]')
+        .replace(/\[VERDICT:\s*(MISLEADING|บิดเบือน)\]/ig, '[VERDICT: <span class="console-verdict-misleading">MISLEADING</span>]');
+      return formatted;
+    }
+
+    // Event Bindings
+    promptTextEl.addEventListener('input', (e) => {
+      validatePrompt(e.target.value);
+    });
+
+    sampleSelectEl.addEventListener('change', (e) => {
+      const selected = e.target.options[e.target.selectedIndex];
+      if (selected && selected.value !== '') {
+        sandboxTranscriptEl.value = selected.dataset.transcript;
+        sandboxContextEl.value = selected.dataset.context;
+      } else {
+        sandboxTranscriptEl.value = '';
+        sandboxContextEl.value = '';
+      }
+    });
+
+    // Save Prompt Configuration
+    btnSaveEl.addEventListener('click', async () => {
+      const currentVal = promptTextEl.value;
+      if (!validatePrompt(currentVal)) {
+        showToast('ไม่สามารถเซฟได้: ขาดรูปแบบแท็กหรือตัวแปรควบคุมที่กำหนด', 'error');
+        return;
+      }
+
+      btnSaveEl.disabled = true;
+      btnSaveEl.innerHTML = '<span class="spinner"></span> กำลังบันทึก...';
+
+      try {
+        const res = await fetch('/api/prompt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: currentVal })
+        });
+        const data = await res.json();
+        
+        if (res.ok) {
+          showToast('บันทึก Prompt และเปิดใช้งานสดเรียบร้อยแล้ว!', 'success');
+          currentSavedPrompt = currentVal;
+        } else {
+          showToast(data.error || 'บันทึกล้มเหลว', 'error');
+        }
+      } catch (err) {
+        showToast('เซิร์ฟเวอร์เกิดข้อผิดพลาด', 'error');
+      } finally {
+        btnSaveEl.disabled = false;
+        btnSaveEl.innerHTML = '💾 บันทึกและเปิดใช้งานจริง';
+      }
+    });
+
+    // Reset default
+    btnResetEl.addEventListener('click', async () => {
+      if (!confirm('คุณต้องการกู้คืน Prompt เริ่มต้นจากผู้พัฒนาหรือไม่? (ค่าปัจจุบันจะถูกล้างออก)')) {
+        return;
+      }
+      
+      try {
+        const res = await fetch('/api/prompt/reset', { method: 'POST' });
+        if (res.ok) {
+          showToast('กู้คืนค่าเริ่มต้นเรียบร้อยแล้ว', 'warning');
+          promptTextEl.value = defaultPrompt;
+          validatePrompt(defaultPrompt);
+        } else {
+          showToast('กู้คืนล้มเหลว', 'error');
+        }
+      } catch (err) {
+        showToast('เซิร์ฟเวอร์เกิดข้อผิดพลาด', 'error');
+      }
+    });
+
+    // Run Sandbox Test
+    btnRunTestEl.addEventListener('click', async () => {
+      const promptVal = promptTextEl.value;
+      const transcriptVal = sandboxTranscriptEl.value.trim();
+      const contextVal = sandboxContextEl.value.trim();
+
+      if (!transcriptVal) {
+        showToast('กรุณากรอกข้อความถอดเสียงสำหรับการทดสอบ', 'warning');
+        return;
+      }
+
+      btnRunTestEl.disabled = true;
+      btnRunTestEl.innerHTML = '<span class="spinner"></span> กำลังประมวลผลวิเคราะห์...';
+      testOutputEl.textContent = 'วิเคราะห์ข้อมูลวิทยากรรมผ่าน Gemini AI...';
+
+      try {
+        const res = await fetch('/api/prompt/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: promptVal,
+            transcript: transcriptVal,
+            context: contextVal,
+            channelHistory: sandboxChannelHistoryEl.value.trim()
+          })
+        });
+        const data = await res.json();
+        
+        if (res.ok) {
+          testOutputEl.innerHTML = formatConsoleOutput(data.result);
+          showToast('ทดสอบประมวลผลเสร็จสิ้น!', 'success');
+        } else {
+          testOutputEl.textContent = 'Error: ' + data.error;
+          showToast('การรันผลทดสอบล้มเหลว', 'error');
+        }
+      } catch (err) {
+        testOutputEl.textContent = 'Error: เซิร์ฟเวอร์ขัดข้อง';
+        showToast('เซิร์ฟเวอร์เกิดข้อผิดพลาด', 'error');
+      } finally {
+        btnRunTestEl.disabled = false;
+        btnRunTestEl.innerHTML = '⚡ เริ่มการทดสอบ (Run Sandbox Test)';
+      }
+    });
+
+    // Init Page load
+    fetchPrompt();
+    fetchHistorySamples();
+    fetchAuditReports();
+    fetchRagDocuments();
+    fetchVotingAnalytics();
+    fetchPriorityChannels();
+    loadActiveSessions();
+    setInterval(loadActiveSessions, 10000);
+  </script>
+</body>
+</html>
