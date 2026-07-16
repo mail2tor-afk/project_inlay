@@ -1,0 +1,58 @@
+[
+  {
+    "videoId": "jNQXAC9IVRw",
+    "domain": "short_no_claim",
+    "expectedBehavior": "no_card",
+    "expectedNoCardReason": "low_claim_density",
+    "allowedMaxCards": 0,
+    "expectedTopThemes": [],
+    "mustNotSelect": ["วิดีโอแรกบน YouTube", "San Diego Zoo", "งวงช้างยาว 2 เมตร"],
+    "guardExpectations": {
+      "llmCallAvoided": true,
+      "acceptedQuoteDrift": 0,
+      "acceptedHallucinatedNumbers": 0
+    }
+  },
+  {
+    "videoId": "_1Y_aAu9s_Y",
+    "domain": "product_review_policy_budget",
+    "expectedBehavior": "cards_required",
+    "minCards": 2,
+    "maxCards": 3,
+    "minExpectedThemeMatches": 2,
+    "expectedTopThemes": ["งบประมาณ", "จ่ายตามผู้ใช้งานจริง", "วัตถุประสงค์หลัก"],
+    "mustNotSelect": ["มุก", "ความเห็นส่วนตัวที่ไม่มี claim", "ข้อมูลนอก transcript"],
+    "guardExpectations": {
+      "acceptedQuoteDrift": 0,
+      "missingMetadata": 0,
+      "lowQuoteSelected": 0
+    }
+  },
+  {
+    "videoId": "dji7DATt4R0",
+    "domain": "news_highlight_title_mismatch",
+    "expectedBehavior": "cards_allowed",
+    "maxCards": 3,
+    "expectedTopThemes": ["ชลประทาน", "ที่ดิน ส.ป.ก.", "กรมฝนหลวง"],
+    "mustNotSelect": ["ไฟไหม้โรงเบียร์", "สถานบันเทิงเถื่อน"],
+    "guardExpectations": {
+      "titleTranscriptAligned": false,
+      "titleMismatchHandled": true
+    }
+  },
+  {
+    "videoId": "soPBC-cvtE0",
+    "domain": "thai_policy_budget_multi_topic",
+    "expectedBehavior": "cards_required",
+    "minCards": 2,
+    "maxCards": 3,
+    "minExpectedThemeMatches": 2,
+    "expectedTopThemes": ["TH AI Passport", "ประกันสังคม", "7,000 ล้าน", "ล่มสลาย", "NDLP"],
+    "mustNotSelect": ["เรื่องอะไรคะ", "ความเห็นส่วนตัวที่ไม่มี claim"],
+    "guardExpectations": {
+      "acceptedQuoteDrift": 0,
+      "missingMetadata": 0,
+      "lowQuoteSelected": 0
+    }
+  }
+]
